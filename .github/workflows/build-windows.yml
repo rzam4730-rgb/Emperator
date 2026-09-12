@@ -1,38 +1,51 @@
-name: Build Emperator Windows (Windows 7 Compatible)
+name: Build Emperator Windows 7
+
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Install Python 3.8.10 for Windows 7 compatibility
+
+      - name: Checkout source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Install Python 3.8.10
         shell: powershell
         run: |
-          Invoke-WebRequest https://www.python.org/ftp/python/3.8.10/python-3.8.10-amd64.exe -OutFile python.exe
-          Start-Process .\python.exe -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_test=0' -Wait
-          $env:Path = 'C:\Program Files\Python38;C:\Program Files\Python38\Scripts;' + $env:Path
-          python --version
+          Invoke-WebRequest "https://www.python.org/ftp/python/3.8.10/python-3.8.10-amd64.exe" -OutFile python.exe
+          Start-Process .\python.exe -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait
+
       - name: Install dependencies
         shell: powershell
         run: |
-          $env:Path = 'C:\Program Files\Python38;C:\Program Files\Python38\Scripts;' + $env:Path
+          $env:Path = "C:\Program Files\Python38;C:\Program Files\Python38\Scripts;" + $env:Path
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
           pip install pyinstaller==5.13.2
+
       - name: Build EXE
         shell: powershell
         run: |
-          $env:Path = 'C:\Program Files\Python38;C:\Program Files\Python38\Scripts;' + $env:Path
-          pyinstaller --noconfirm --clean --onedir --name Emperator --add-data "backend;backend" --add-data "frontend;frontend" desktop/emperor_desktop.py
+          $env:Path = "C:\Program Files\Python38;C:\Program Files\Python38\Scripts;" + $env:Path
+          python -m PyInstaller --noconfirm --clean --onedir --name Emperator --add-data "backend;backend" --add-data "frontend;frontend" desktop/emperor_desktop.py
+
       - name: Install Inno Setup
-        run: choco install innosetup -y
+        shell: powershell
+        run: |
+          choco install innosetup -y
+
       - name: Build Setup
-        run: iscc installer/Emperor.iss
+        shell: powershell
+        run: |
+          iscc installer/Emperor.iss
+
       - name: Upload Setup
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
         with:
           name: EmperatorSetup-Windows7
           path: installer/Output/EmperatorSetup.exe
