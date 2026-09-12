@@ -10,7 +10,6 @@ jobs:
     runs-on: windows-latest
 
     steps:
-
       - name: Checkout source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
@@ -36,16 +35,14 @@ jobs:
 
       - name: Install Inno Setup
         shell: powershell
-        run: |
-          choco install innosetup -y
+        run: choco install innosetup -y
 
       - name: Build Setup
         shell: powershell
-        run: |
-          iscc installer/Emperor.iss
+        run: iscc installer/Emperor.iss
 
-      - name: Upload Setup
+      - name: Upload Setup V2
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
         with:
-          name: EmperatorSetup-Windows7
-          path: installer/Output/EmperatorSetup.exe
+          name: EmperatorSetup-V2-DarkUI
+          path: installer/Output/EmperatorSetup-V2-DarkUI.exe
