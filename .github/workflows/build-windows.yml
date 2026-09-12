@@ -1,4 +1,4 @@
-name: Build Emperator Windows
+name: Build Emperator Windows (Windows 7 Compatible)
 on:
   push:
     branches: [ main ]
@@ -10,14 +10,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.8'
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade "pip<25"
           pip install -r backend/requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller==5.13.2
       - name: Build EXE
-        run: pyinstaller --noconfirm --onedir --name Emperator --add-data "backend;backend" --add-data "frontend;frontend" desktop/emperor_desktop.py
+        run: pyinstaller --noconfirm --clean --onedir --name Emperator --add-data "backend;backend" --add-data "frontend;frontend" desktop/emperor_desktop.py
       - name: Install Inno Setup
         run: choco install innosetup -y
       - name: Build Setup
@@ -25,5 +25,5 @@ jobs:
       - name: Upload Setup
         uses: actions/upload-artifact@v4
         with:
-          name: EmperatorSetup
+          name: EmperatorSetup-Windows7
           path: installer/Output/EmperatorSetup.exe
