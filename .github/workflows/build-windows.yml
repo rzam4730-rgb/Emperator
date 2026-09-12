@@ -1,0 +1,29 @@
+name: Build Emperator Windows
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pyinstaller
+      - name: Build EXE
+        run: pyinstaller --noconfirm --onedir --name Emperator --add-data "backend;backend" --add-data "frontend;frontend" desktop/emperor_desktop.py
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+      - name: Build Setup
+        run: iscc installer/Emperor.iss
+      - name: Upload Setup
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmperatorSetup
+          path: installer/Output/EmperatorSetup.exe
