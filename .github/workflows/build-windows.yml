@@ -8,16 +8,25 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.8'
-      - name: Install dependencies
+      - name: Install Python 3.8.10 for Windows 7 compatibility
+        shell: powershell
         run: |
-          python -m pip install --upgrade "pip<25"
+          Invoke-WebRequest https://www.python.org/ftp/python/3.8.10/python-3.8.10-amd64.exe -OutFile python.exe
+          Start-Process .\python.exe -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_test=0' -Wait
+          $env:Path = 'C:\Program Files\Python38;C:\Program Files\Python38\Scripts;' + $env:Path
+          python --version
+      - name: Install dependencies
+        shell: powershell
+        run: |
+          $env:Path = 'C:\Program Files\Python38;C:\Program Files\Python38\Scripts;' + $env:Path
+          python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
           pip install pyinstaller==5.13.2
       - name: Build EXE
-        run: pyinstaller --noconfirm --clean --onedir --name Emperator --add-data "backend;backend" --add-data "frontend;frontend" desktop/emperor_desktop.py
+        shell: powershell
+        run: |
+          $env:Path = 'C:\Program Files\Python38;C:\Program Files\Python38\Scripts;' + $env:Path
+          pyinstaller --noconfirm --clean --onedir --name Emperator --add-data "backend;backend" --add-data "frontend;frontend" desktop/emperor_desktop.py
       - name: Install Inno Setup
         run: choco install innosetup -y
       - name: Build Setup
