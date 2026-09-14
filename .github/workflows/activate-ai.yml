@@ -1,0 +1,39 @@
+name: Activate AI Core
+on:
+  push:
+    branches: [main]
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch main.py
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('backend/app/main.py')
+          s=p.read_text(encoding='utf-8')
+          imp='from .ai_core import install_ai_schema, mount_ai_routes\n'
+          if imp not in s:
+              marker='from .subscription import'
+              pos=s.find(marker)
+              line_end=s.find('\n',pos)
+              s=s[:line_end+1]+imp+s[line_end+1:]
+          if 'install_ai_schema(c)' not in s:
+              marker='    c.executescript(SUBSCRIPTION_SCHEMA)'
+              s=s.replace(marker, marker+'\n    install_ai_schema(c)',1)
+          if 'mount_ai_routes(app, conn, current_user)' not in s:
+              s += '\nmount_ai_routes(app, conn, current_user)\n'
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Validate
+        run: python -m py_compile backend/app/main.py backend/app/ai_core.py
+      - name: Commit
+        run: |
+          git config user.name 'Emperator Bot'
+          git config user.email 'bot@emperator.local'
+          git add backend/app/main.py
+          git diff --cached --quiet || git commit -m 'feat: activate AI core'
+          git push
