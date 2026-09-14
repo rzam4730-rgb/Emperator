@@ -1,0 +1,36 @@
+name: Finalize Payment Settlement
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Harden callback and module settlement
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('backend/app/payment_routes.py'); t=p.read_text(encoding='utf-8'); changed=False
+          if 'Query' not in t.split('\n',4)[0:4]:
+              t=t.replace('from fastapi import APIRouter, Depends, HTTPException','from fastapi import APIRouter, Depends, HTTPException, Query',1); changed=True
+          old='def payment_callback(gateway_code:str,authority:str,status:str="OK"):'
+          new='def payment_callback(gateway_code:str,authority:str=Query(..., alias="Authority"),status:str=Query("OK", alias="Status")):'
+          if old in t: t=t.replace(old,new,1); changed=True
+          marker='        c.commit(); c.close(); return {"status":"paid","payment_id":row["id"],"transaction_id":result.transaction_id}'
+          branch='''        elif row["payment_type"]=="module":\n            module_code=row["reference_id"]\n            if module_code:\n                c.execute("CREATE TABLE IF NOT EXISTS restaurant_modules(id INTEGER PRIMARY KEY AUTOINCREMENT,restaurant_id INTEGER NOT NULL,module_code TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',activated_at TEXT NOT NULL,expires_at TEXT,UNIQUE(restaurant_id,module_code))")\n                c.execute("INSERT OR REPLACE INTO restaurant_modules(restaurant_id,module_code,status,activated_at,expires_at) VALUES(?,?,?,?,?)",(row["restaurant_id"],module_code,"active",now,(now_dt+timedelta(days=30)).isoformat()))\n'''
+          if 'row["payment_type"]=="module"' not in t and marker in t:
+              t=t.replace(marker,branch+marker,1); changed=True
+          if changed:p.write_text(t,encoding='utf-8')
+      - name: Validate
+        run: python -m py_compile backend/app/main.py backend/app/payment.py backend/app/payment_routes.py backend/app/billing_core.py backend/app/gateway_zarinpal.py
+      - name: Commit
+        if: success()
+        shell: bash
+        run: |
+          if git diff --quiet -- backend/app/payment_routes.py; then exit 0; fi
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/app/payment_routes.py; git commit -m 'fix: settle add-on modules and ZarinPal callback'; git push
