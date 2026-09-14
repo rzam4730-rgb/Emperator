@@ -3,7 +3,7 @@ WORKDIR /app
 COPY requirements-web.txt /app/requirements-web.txt
 RUN pip install --no-cache-dir -r /app/requirements-web.txt
 COPY backend /app/backend
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && rm -f /app/emperator.db && ln -s /app/data/emperator.db /app/emperator.db
 ENV PYTHONPATH=/app/backend
 ENV EMPERATOR_DB_PATH=/app/data/emperator.db
 EXPOSE 8000
