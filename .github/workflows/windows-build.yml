@@ -1,35 +1,49 @@
 name: Emperator Windows Build
+
 on:
   workflow_dispatch:
   push:
     branches: [main]
+
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install backend dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
           pip install fastapi uvicorn bcrypt PyJWT
           pip install pyinstaller==5.13.2
+
       - name: Build backend executable
         shell: pwsh
         run: |
           pyinstaller --noconfirm --clean --onefile --name emperator-backend --paths backend backend/launcher.py
           New-Item -ItemType Directory -Force dist-backend | Out-Null
           Copy-Item dist/emperator-backend.exe dist-backend/emperator-backend.exe
+
+      - name: Prepare frontend for Electron packaging
+        shell: pwsh
+        run: |
+          if (Test-Path desktop/frontend) { Remove-Item desktop/frontend -Recurse -Force }
+          Copy-Item frontend desktop/frontend -Recurse
+
       - name: Install desktop dependencies
         working-directory: desktop
         run: npm install
+
       - name: Build Windows installer
         working-directory: desktop
         run: npm run dist
+
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
