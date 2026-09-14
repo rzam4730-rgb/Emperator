@@ -1,0 +1,72 @@
+name: Integrate Core Modules
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch FastAPI mounts
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('backend/app/main.py')
+          t = p.read_text(encoding='utf-8')
+
+          imports = [
+              'from .payment_routes import PAYMENT_SCHEMA, mount_payment_routes\n',
+              'from .billing_core import install_billing_schema, mount_billing_routes\n',
+              'from .sms_routes import SMS_SCHEMA, mount_sms_routes\n',
+          ]
+          anchor = 'from .subscription import SCHEMA as SUBSCRIPTION_SCHEMA, seed_plans, ensure_subscription, plan_limits, get_usage, increment_usage, utcnow\n'
+          if anchor not in t:
+              raise SystemExit('subscription import anchor not found')
+          for line in imports:
+              if line not in t:
+                  t = t.replace(anchor, anchor + line, 1)
+
+          schema_anchor = '    c.executescript(SUBSCRIPTION_SCHEMA)\n'
+          if schema_anchor not in t:
+              raise SystemExit('subscription schema anchor not found')
+          for line in ['    c.executescript(PAYMENT_SCHEMA)\n', '    install_billing_schema(c)\n', '    c.executescript(SMS_SCHEMA)\n']:
+              if line not in t:
+                  t = t.replace(schema_anchor, schema_anchor + line, 1)
+
+          cors = 'app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS"], allow_headers=["Authorization","Content-Type"])'
+          if cors not in t:
+              raise SystemExit('CORS anchor not found')
+          mounts = [
+              'mount_payment_routes(app, conn, current_user, subscription_view, ensure_subscription, plan_limits)',
+              'mount_billing_routes(app, conn, current_user)',
+              'mount_sms_routes(app, conn, current_user)',
+          ]
+          for line in mounts:
+              if line not in t:
+                  t = t.replace(cors, cors + '\n' + line, 1)
+
+          p.write_text(t, encoding='utf-8')
+          print('core modules integrated')
+
+      - name: Validate Python
+        run: python -m py_compile backend/app/main.py backend/app/payment.py backend/app/payment_routes.py backend/app/billing_core.py backend/app/sms.py backend/app/sms_routes.py
+
+      - name: Commit integration
+        run: |
+          if git diff --quiet -- backend/app/main.py; then
+            echo 'No main.py changes.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/app/main.py
+          git commit -m 'feat: mount payment billing and SMS modules'
+          git push
