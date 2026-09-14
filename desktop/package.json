@@ -16,19 +16,10 @@
     "appId": "ir.emperator.app",
     "productName": "Emperator",
     "artifactName": "Emperator-Setup-${version}.exe",
-    "files": [
-      "main.js",
-      "preload.js"
-    ],
+    "files": ["main.js", "preload.js", "printer_bridge.py"],
     "extraResources": [
-      {
-        "from": "../dist-backend",
-        "to": "backend"
-      },
-      {
-        "from": "frontend",
-        "to": "frontend"
-      }
+      {"from": "../dist-backend", "to": "backend"},
+      {"from": "frontend", "to": "frontend"}
     ],
     "win": {
       "target": "nsis",
