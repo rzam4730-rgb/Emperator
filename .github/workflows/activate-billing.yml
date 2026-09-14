@@ -1,0 +1,48 @@
+name: Activate Emperator Billing
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Integrate billing modules
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('backend/app/main.py'); t=p.read_text(encoding='utf-8'); changed=False
+          anchor='from .subscription import SCHEMA as SUBSCRIPTION_SCHEMA, seed_plans, ensure_subscription, plan_limits, get_usage, increment_usage, utcnow\n'
+          imp='from .billing_core import install_billing_schema, mount_billing_routes\n'
+          if imp not in t:
+              if anchor not in t: raise SystemExit('subscription import anchor not found')
+              t=t.replace(anchor,anchor+imp,1); changed=True
+          if 'install_billing_schema(c)' not in t:
+              anchor='    c.executescript(SUBSCRIPTION_SCHEMA)\n'
+              if anchor not in t: raise SystemExit('subscription schema anchor not found')
+              t=t.replace(anchor,anchor+'    install_billing_schema(c)\n',1); changed=True
+          marker='mount_payment_routes(app, conn, current_user, subscription_view, ensure_subscription, plan_limits)'
+          if 'mount_billing_routes(app, conn, current_user)' not in t:
+              if marker not in t: raise SystemExit('payment mount anchor not found')
+              t=t.replace(marker,marker+'\nmount_billing_routes(app, conn, current_user)',1); changed=True
+          p.write_text(t,encoding='utf-8') if changed else None
+          q=Path('frontend/index.html'); h=q.read_text(encoding='utf-8');
+          if 'billing.js' not in h:
+              h=h.replace('<script src="subscription.js"></script>','<script src="subscription.js"></script><script src="billing.js"></script>')
+              q.write_text(h,encoding='utf-8'); changed=True
+          print('billing integration', 'changed' if changed else 'already present')
+      - name: Validate Python
+        run: python -m py_compile backend/app/main.py backend/app/payment.py backend/app/payment_routes.py backend/app/billing_core.py backend/app/gateway_zarinpal.py
+      - name: Commit integration
+        if: success()
+        shell: bash
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/app/main.py frontend/index.html
+          git commit -m 'feat: activate billing modules and purchase UI'
+          git push
