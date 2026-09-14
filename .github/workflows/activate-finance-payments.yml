@@ -1,0 +1,37 @@
+name: Activate Finance And Payments
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch main registration
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('backend/app/main.py')
+          s=p.read_text(encoding='utf-8')
+          marker='from .subscription import SCHEMA as SUBSCRIPTION_SCHEMA, seed_plans, ensure_subscription, plan_limits, get_usage, increment_usage, utcnow'
+          if 'from .platform_modules import install_platform_modules, mount_platform_modules' not in s:
+              s=s.replace(marker, marker+'\nfrom .platform_modules import install_platform_modules, mount_platform_modules')
+          if 'install_platform_modules(c)' not in s:
+              s=s.replace('    seed_plans(c)\n', '    seed_plans(c)\n    install_platform_modules(c)\n', 1)
+          if 'mount_platform_modules(app, conn, current_user, subscription_view, ensure_subscription, plan_limits)' not in s:
+              s += '\n\n# Central registration for finance, billing and payment modules.\nmount_platform_modules(app, conn, current_user, subscription_view, ensure_subscription, plan_limits)\n'
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Validate imports
+        run: |
+          python -m py_compile backend/app/main.py backend/app/platform_modules.py backend/app/accounting.py backend/app/payment_routes.py
+      - name: Commit integration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/app/main.py
+          git diff --cached --quiet || git commit -m 'Integrate accounting and payment modules'
+          git push
