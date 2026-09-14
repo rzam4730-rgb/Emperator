@@ -1,0 +1,10 @@
+{
+  "name": "emperator-desktop",
+  "version": "1.0.0",
+  "description": "Emperator Restaurant Management",
+  "main": "main.js",
+  "private": true,
+  "scripts": {"start":"electron .","dist":"electron-builder --win nsis"},
+  "devDependencies": {"electron":"22.3.27","electron-builder":"24.13.3"},
+  "build": {"appId":"ir.emperator.app","productName":"Emperator","artifactName":"Emperator-Setup-${version}.exe","files":["main.js","preload.js","../frontend/**/*"],"extraResources":[{"from":"../dist-backend","to":"backend"}],"win":{"target":"nsis","requestedExecutionLevel":"asInvoker"},"nsis":{"oneClick":false,"allowToChangeInstallationDirectory":true,"createDesktopShortcut":true,"createStartMenuShortcut":true}}
+}
