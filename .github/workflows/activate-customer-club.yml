@@ -1,0 +1,44 @@
+name: Activate Customer Club
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch application
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('backend/app/main.py')
+          s=p.read_text(encoding='utf-8')
+          imp='from .customer_club import install_customer_club_schema, mount_customer_club_routes, award_order_points\n'
+          if imp not in s:
+              pos=s.find('from .subscription import')
+              end=s.find('\n',pos)
+              s=s[:end+1]+imp+s[end+1:]
+          marker='    seed_plans(c)\n'
+          if 'install_customer_club_schema(c)' not in s:
+              s=s.replace(marker,marker+'    install_customer_club_schema(c)\n',1)
+          if 'mount_customer_club_routes(app, conn, current_user)' not in s:
+              s += '\nmount_customer_club_routes(app, conn, current_user)\n'
+          needle='        increment_usage(c,user["restaurant_id"],"invoices_daily",1)\n'
+          reward='        increment_usage(c,user["restaurant_id"],"invoices_daily",1)\n        award_order_points(c,user["restaurant_id"],oid,user["id"])\n'
+          if reward not in s and needle in s:
+              s=s.replace(needle,reward,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Validate
+        run: python -m py_compile backend/app/main.py backend/app/customer_club.py
+      - name: Commit
+        run: |
+          git config user.name 'Emperator Bot'
+          git config user.email 'bot@emperator.local'
+          git add backend/app/main.py
+          git diff --cached --quiet || git commit -m 'feat: activate customer club and automatic loyalty rewards'
+          git push
