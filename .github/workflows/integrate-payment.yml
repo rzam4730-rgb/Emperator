@@ -16,43 +16,37 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Integrate payment routes
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
-
           path = Path("backend/app/main.py")
           text = path.read_text(encoding="utf-8")
-
           import_line = "from .payment_routes import PAYMENT_SCHEMA, mount_payment_routes\n"
-          schema_marker = "    c.executescript(PAYMENT_SCHEMA)"
-          mount_marker = "mount_payment_routes(app, conn, current_user, subscription_view, ensure_subscription, plan_limits)"
-
           changed = False
-
           if import_line not in text:
               anchor = "from .subscription import SCHEMA as SUBSCRIPTION_SCHEMA, seed_plans, ensure_subscription, plan_limits, get_usage, increment_usage, utcnow\n"
               if anchor not in text:
                   raise SystemExit("subscription import anchor not found")
               text = text.replace(anchor, anchor + import_line, 1)
               changed = True
-
-          if schema_marker not in text:
+          if "    c.executescript(PAYMENT_SCHEMA)" not in text:
               anchor = "    c.executescript(SUBSCRIPTION_SCHEMA)\n"
               if anchor not in text:
                   raise SystemExit("subscription schema anchor not found")
               text = text.replace(anchor, anchor + "    c.executescript(PAYMENT_SCHEMA)\n", 1)
               changed = True
-
+          mount_marker = "mount_payment_routes(app, conn, current_user, subscription_view, ensure_subscription, plan_limits)"
           if mount_marker not in text:
               anchor = "app.add_middleware(CORSMiddleware, allow_origins=[\"*\"], allow_credentials=False, allow_methods=[\"GET\",\"POST\",\"PUT\",\"PATCH\",\"DELETE\",\"OPTIONS\"], allow_headers=[\"Authorization\",\"Content-Type\"])\n"
               if anchor not in text:
                   raise SystemExit("CORS anchor not found")
               text = text.replace(anchor, anchor + "\n" + mount_marker + "\n", 1)
               changed = True
-
           if changed:
               path.write_text(text, encoding="utf-8")
           print("payment integration", "updated" if changed else "already integrated")
+          PY
 
       - name: Validate Python syntax
         shell: bash
