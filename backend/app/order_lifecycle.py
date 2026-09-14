@@ -1,5 +1,4 @@
 """Unified order lifecycle for Emperator."""
-import sqlite3
 from datetime import datetime, timezone
 from fastapi import Depends, HTTPException
 
@@ -36,25 +35,22 @@ def mount_order_lifecycle_routes(app, conn_factory, current_user):
     def finalize(order_id:int,user=Depends(current_user)):
         c=conn_factory(); rid=user['restaurant_id']
         try:
+            c.execute('BEGIN')
             o=c.execute('SELECT * FROM orders WHERE id=? AND restaurant_id=?',(order_id,rid)).fetchone()
             if not o: raise HTTPException(404,'سفارش یافت نشد')
             if o['status']=='تحویل‌شده': return {'status':'already_finalized','order_id':order_id}
-            old=o['status']; c.execute('UPDATE orders SET status=? WHERE id=? AND restaurant_id=?',('تحویل‌شده',order_id,rid))
+            old=o['status']
+            from .order_inventory import consume_order_inventory
+            cost, inventory_status=consume_order_inventory(c,order_id,user)
+            c.execute('UPDATE orders SET status=? WHERE id=? AND restaurant_id=?',('تحویل‌شده',order_id,rid))
             c.execute('INSERT INTO order_status_history(order_id,restaurant_id,from_status,to_status,changed_by,created_at) VALUES(?,?,?,?,?,?)',(order_id,rid,old,'تحویل‌شده',user['id'],_now()))
-            c.commit()
-            result={'order_id':order_id,'status':'تحویل‌شده','inventory':None,'loyalty':None,'sms':None}
-            try:
-                from .order_inventory import consume_order_inventory
-                result['inventory']=consume_order_inventory(c,rid,order_id,user['id'])
-            except Exception as e:
-                # Lifecycle remains usable even when a recipe is not configured.
-                result['inventory']={'skipped':True,'reason':str(e)}
+            loyalty=None
             try:
                 from .customer_club import award_order_points
-                result['loyalty']=award_order_points(c,rid,order_id,user['id'])
-            except Exception as e: result['loyalty']={'skipped':True,'reason':str(e)}
+                loyalty=award_order_points(c,rid,order_id,user['id'])
+            except Exception: loyalty={'skipped':True}
             c.commit()
-            return result
+            return {'order_id':order_id,'status':'تحویل‌شده','inventory':{'status':inventory_status,'cost':cost},'loyalty':loyalty}
         except HTTPException: c.rollback(); raise
         finally: c.close()
 
@@ -62,7 +58,7 @@ def mount_order_lifecycle_routes(app, conn_factory, current_user):
     def receipt(order_id:int,user=Depends(current_user)):
         c=conn_factory(); rid=user['restaurant_id']
         try:
-            o=c.execute('SELECT o.*,COALESCE(c.name,\'مشتری حضوری\') customer_name FROM orders o LEFT JOIN customers c ON c.id=o.customer_id WHERE o.id=? AND o.restaurant_id=?',(order_id,rid)).fetchone()
+            o=c.execute("SELECT o.*,COALESCE(c.name,'مشتری حضوری') customer_name FROM orders o LEFT JOIN customers c ON c.id=o.customer_id WHERE o.id=? AND o.restaurant_id=?",(order_id,rid)).fetchone()
             if not o: raise HTTPException(404,'سفارش یافت نشد')
             items=[dict(x) for x in c.execute('SELECT name,price,quantity FROM order_items WHERE order_id=?',(order_id,)).fetchall()]
             c.execute('INSERT INTO order_receipts(order_id,restaurant_id,receipt_type,printed_at,created_at) VALUES(?,?,?,?,?) ON CONFLICT(order_id) DO UPDATE SET printed_at=excluded.printed_at',(order_id,rid,'thermal',_now(),_now()))
