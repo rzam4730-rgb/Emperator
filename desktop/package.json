@@ -16,9 +16,10 @@
     "appId": "ir.emperator.app",
     "productName": "Emperator",
     "artifactName": "Emperator-Setup-${version}.exe",
-    "files": ["main.js", "preload.js", "printer_bridge.py"],
+    "files": ["main.js", "preload.js"],
     "extraResources": [
       {"from": "../dist-backend", "to": "backend"},
+      {"from": "../dist-printer", "to": "printer"},
       {"from": "frontend", "to": "frontend"}
     ],
     "win": {
