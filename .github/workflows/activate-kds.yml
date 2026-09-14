@@ -1,0 +1,37 @@
+name: Activate POS KDS
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch main.py
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('backend/app/main.py')
+          s=p.read_text(encoding='utf-8')
+          imp='from .kds import mount_kds_routes\n'
+          if imp not in s:
+              marker='from .subscription import'
+              pos=s.find(marker)
+              end=s.find('\n',pos)
+              s=s[:end+1]+imp+s[end+1:]
+          mount='mount_kds_routes(app, conn, current_user)'
+          if mount not in s:
+              s += '\n\n'+mount+'\n'
+          p.write_text(s,encoding='utf-8')
+      - name: Validate Python
+        run: python -m py_compile backend/app/main.py backend/app/kds.py
+      - name: Commit activation
+        run: |
+          git config user.name 'Emperator Bot'
+          git config user.email 'bot@emperator.local'
+          git add backend/app/main.py
+          git diff --cached --quiet || git commit -m 'feat: activate POS KDS routes'
+          git push
