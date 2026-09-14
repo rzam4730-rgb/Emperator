@@ -1,7 +1,6 @@
 """Payment API helpers. Included separately to keep gateway logic replaceable."""
 import json
-import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -78,7 +77,6 @@ def mount_payment_routes(app, conn_factory, current_user, subscription_view, ens
 
     @app.get("/api/payments/callback/{gateway_code}")
     def payment_callback(gateway_code: str, authority: str, status: str = "OK"):
-        # Real gateways can use their POST/GET callback contract here.
         c = conn_factory()
         row = c.execute("SELECT * FROM payments WHERE authority=? AND gateway=?", (authority, gateway_code)).fetchone()
         if not row:
@@ -96,9 +94,9 @@ def mount_payment_routes(app, conn_factory, current_user, subscription_view, ens
             c.execute("UPDATE payments SET status='failed' WHERE id=?", (row["id"],))
             c.commit(); c.close()
             return {"status": "failed", "payment_id": row["id"], "message": result.message}
-        now = datetime.now(timezone.utc).isoformat()
+        now_dt = datetime.now(timezone.utc)
+        now = now_dt.isoformat()
         c.execute("UPDATE payments SET status='paid',gateway_transaction_id=?,paid_at=? WHERE id=?", (result.transaction_id, now, row["id"]))
-        # Subscription fulfillment: activate the selected plan for 30 days.
         if row["payment_type"] == "subscription":
             try:
                 meta = json.loads(row["metadata_json"] or "{}")
@@ -108,10 +106,8 @@ def mount_payment_routes(app, conn_factory, current_user, subscription_view, ens
             plan = c.execute("SELECT * FROM plans WHERE code=? AND active=1", (plan_code,)).fetchone()
             if plan:
                 old = ensure_subscription(c, row["restaurant_id"])
-                from datetime import timedelta
-                start = now
-                expires = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
-                c.execute("UPDATE subscriptions SET plan_id=?,status='active',starts_at=?,expires_at=?,updated_at=? WHERE restaurant_id=?", (plan["id"], "active" if False else start, expires, now, row["restaurant_id"]))
+                expires = (now_dt + timedelta(days=30)).isoformat()
+                c.execute("UPDATE subscriptions SET plan_id=?,status='active',starts_at=?,expires_at=?,updated_at=? WHERE restaurant_id=?", (plan["id"], now, expires, now, row["restaurant_id"]))
                 c.execute("INSERT INTO subscription_events(restaurant_id,event_type,plan_id,amount,metadata_json,created_at) VALUES(?,?,?,?,?,?)", (row["restaurant_id"], "payment", plan["id"], row["amount"], json.dumps({"payment_id": row["id"], "from": old["code"]}, ensure_ascii=False), now))
         c.commit(); c.close()
         return {"status": "paid", "payment_id": row["id"], "transaction_id": result.transaction_id}
