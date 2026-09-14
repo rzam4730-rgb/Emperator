@@ -21,69 +21,61 @@ jobs:
               s=p.read_text(encoding='utf-8')
               if not s.startswith('from __future__ import annotations'):
                   if s.startswith('"""'):
-                      end=s.find('"""', 3)
-                      if end >= 0:
-                          end += 3
+                      end=s.find('"""',3)
+                      if end>=0:
+                          end+=3
                           s=s[:end]+'\nfrom __future__ import annotations\n'+s[end:]
                       else:
                           s='from __future__ import annotations\n'+s
                   else:
                       s='from __future__ import annotations\n'+s
-                  p.write_text(s, encoding='utf-8')
+                  p.write_text(s,encoding='utf-8')
 
       - name: Activate integrated backend modules
         shell: python
         run: |
           from pathlib import Path
-          p=Path('backend/app/main.py')
-          s=p.read_text(encoding='utf-8')
-
-          imports = [
-              'from .order_status import STATUSES as ORDER_STATUSES, is_allowed\n',
-              'from .order_lifecycle import install_lifecycle_schema, mount_order_lifecycle_routes\n',
-              'from .order_inventory import install_order_inventory_schema, mount_order_inventory_routes\n',
-              'from .customer_club import install_customer_club_schema, mount_customer_club_routes, award_order_points\n',
-              'from .sms import get_sms_provider\n',
-              'from .sms_routes import SMS_SCHEMA, mount_sms_routes\n',
-              'from .inventory import install_inventory_schema, mount_inventory_routes\n',
-              'from .accounting import install_accounting_schema, mount_accounting_routes\n',
-              'from .billing_core import install_billing_schema, mount_billing_routes\n',
-              'from .ai_core import install_ai_schema, mount_ai_routes\n',
-              'from .payment_routes import PAYMENT_SCHEMA, mount_payment_routes\n',
+          p=Path('backend/app/main.py'); s=p.read_text(encoding='utf-8')
+          imports=[
+            'from .order_status import STATUSES as ORDER_STATUSES, is_allowed\n',
+            'from .order_lifecycle import install_lifecycle_schema, mount_order_lifecycle_routes\n',
+            'from .order_inventory import install_order_inventory_schema, mount_order_inventory_routes\n',
+            'from .customer_club import install_customer_club_schema, mount_customer_club_routes, award_order_points\n',
+            'from .sms import get_sms_provider\n',
+            'from .sms_routes import SMS_SCHEMA, mount_sms_routes\n',
+            'from .inventory import install_inventory_schema, mount_inventory_routes\n',
+            'from .accounting import install_accounting_schema, mount_accounting_routes\n',
+            'from .billing_core import install_billing_schema, mount_billing_routes\n',
+            'from .ai_core import install_ai_schema, mount_ai_routes\n',
+            'from .payment_routes import PAYMENT_SCHEMA, mount_payment_routes\n',
           ]
-          marker='from .subscription import'
-          pos=s.find(marker)
-          if pos < 0:
-              raise SystemExit('subscription import marker not found')
-          end=s.find('\n', pos)+1
+          marker='from .subscription import'; pos=s.find(marker)
+          if pos<0: raise SystemExit('subscription import marker not found')
+          end=s.find('\n',pos)+1
           for imp in imports:
               if imp not in s:
-                  s=s[:end]+imp+s[end:]
-                  end += len(imp)
+                  s=s[:end]+imp+s[end:]; end+=len(imp)
 
-          schema_block = '''    c.executescript(SMS_SCHEMA)\n    install_inventory_schema(c)\n    install_accounting_schema(c)\n    install_billing_schema(c)\n    install_ai_schema(c)\n    c.executescript(PAYMENT_SCHEMA)\n    install_lifecycle_schema(c)\n    install_order_inventory_schema(c)\n    install_customer_club_schema(c)'''
           anchor='    seed_plans(c)'
+          schema_block='''    c.executescript(SMS_SCHEMA)\n    install_inventory_schema(c)\n    install_accounting_schema(c)\n    install_billing_schema(c)\n    install_ai_schema(c)\n    c.executescript(PAYMENT_SCHEMA)\n    install_lifecycle_schema(c)\n    install_order_inventory_schema(c)\n    install_customer_club_schema(c)'''
           if 'c.executescript(SMS_SCHEMA)' not in s:
-              if anchor not in s:
-                  raise SystemExit('seed_plans anchor not found')
-              s=s.replace(anchor, anchor+'\n'+schema_block, 1)
+              if anchor not in s: raise SystemExit('seed_plans anchor not found')
+              s=s.replace(anchor,anchor+'\n'+schema_block,1)
 
-          mounts = [
-              'mount_inventory_routes(app, conn, current_user)',
-              'mount_accounting_routes(app, conn, current_user)',
-              'mount_billing_routes(app, conn, current_user)',
-              'mount_ai_routes(app, conn, current_user)',
-              'mount_sms_routes(app, conn, current_user)',
-              'mount_payment_routes(app, conn, current_user, subscription_view, ensure_subscription, plan_limits)',
-              'mount_order_lifecycle_routes(app, conn, current_user)',
-              'mount_order_inventory_routes(app, conn, current_user)',
-              'mount_customer_club_routes(app, conn, current_user, get_sms_provider)',
+          mounts=[
+            'mount_inventory_routes(app, conn, current_user)',
+            'mount_accounting_routes(app, conn, current_user)',
+            'mount_billing_routes(app, conn, current_user)',
+            'mount_ai_routes(app, conn, current_user)',
+            'mount_sms_routes(app, conn, current_user)',
+            'mount_payment_routes(app, conn, current_user, subscription_view, ensure_subscription, plan_limits)',
+            'mount_order_lifecycle_routes(app, conn, current_user)',
+            'mount_order_inventory_routes(app, conn, current_user)',
+            'mount_customer_club_routes(app, conn, current_user, get_sms_provider)',
           ]
           for m in mounts:
-              if m not in s:
-                  s += '\n'+m+'\n'
-
-          p.write_text(s, encoding='utf-8')
+              if m not in s: s+='\n'+m+'\n'
+          p.write_text(s,encoding='utf-8')
 
       - name: Normalize shared order status
         shell: python
@@ -91,30 +83,37 @@ jobs:
           from pathlib import Path
           for name in ('kds.py','order_inventory.py'):
               p=Path('backend/app')/name
-              if p.exists():
-                  s=p.read_text(encoding='utf-8').replace('درحال آماده‌سازی','در حال آماده‌سازی')
-                  p.write_text(s,encoding='utf-8')
+              if p.exists(): p.write_text(p.read_text(encoding='utf-8').replace('درحال آماده‌سازی','در حال آماده‌سازی'),encoding='utf-8')
+
+      - name: Activate POS printer frontend
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/index.html'); s=p.read_text(encoding='utf-8')
+          tag='<script src="printer.js"></script>'
+          if tag not in s:
+              marker='<script src="app.js"></script>'
+              if marker in s: s=s.replace(marker,marker+tag,1)
+              else: s=s.replace('</body>',tag+'</body>',1)
+              p.write_text(s,encoding='utf-8')
 
       - name: Validate Python modules
         shell: bash
-        run: |
-          python -m py_compile backend/app/*.py
+        run: python -m py_compile backend/app/*.py
 
       - name: Smoke import
         shell: bash
-        run: |
-          PYTHONPATH=. python -c "from backend.app.main import app; print('Emperator API import OK')"
+        run: PYTHONPATH=. python -c "from backend.app.main import app; print('Emperator API import OK')"
 
       - name: Run integration smoke test when available
         shell: bash
-        run: |
-          if [ -f backend/app/integration_smoke.py ]; then PYTHONPATH=. python backend/app/integration_smoke.py; fi
+        run: if [ -f backend/app/integration_smoke.py ]; then PYTHONPATH=. python backend/app/integration_smoke.py; fi
 
       - name: Commit integration
         shell: bash
         run: |
           git config user.name 'Emperator Bot'
           git config user.email 'bot@emperator.local'
-          git add backend/app
-          git diff --cached --quiet || git commit -m 'feat: activate complete Emperator platform'
+          git add backend/app frontend/index.html frontend/printer.js
+          git diff --cached --quiet || git commit -m 'feat: activate complete Emperator platform and POS printing'
           git push
