@@ -1,0 +1,35 @@
+name: Activate SMS UI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Activate SMS frontend
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('frontend/index.html')
+          t = p.read_text(encoding='utf-8')
+          if 'sms.js' not in t:
+              marker = '<script src="app.js"></script>'
+              if marker not in t:
+                  raise SystemExit('app.js script marker not found')
+              t = t.replace(marker, marker + '<script src="sms.js"></script>', 1)
+              p.write_text(t, encoding='utf-8')
+      - name: Commit
+        run: |
+          if git diff --quiet -- frontend/index.html; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/index.html
+          git commit -m 'feat: activate SMS management UI'
+          git push
