@@ -11,38 +11,84 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Setup Python 3.8 for Windows 7 compatibility
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.8.10'
 
       - name: Install backend dependencies
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          pip install fastapi uvicorn bcrypt PyJWT
-          pip install pyinstaller==5.13.2
+          python -m pip install --upgrade "pip<24.1"
+          pip install "fastapi==0.103.2" "uvicorn==0.23.2" "bcrypt==4.0.1" "PyJWT==2.8.0" "pydantic==1.10.13"
+          pip install "pyinstaller==5.13.2" "pywin32==306"
+
+      - name: Ensure Python 3.8 annotation compatibility
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem backend\app\*.py
+          foreach ($f in $files) {
+            $s = Get-Content $f.FullName -Raw -Encoding UTF8
+            if (-not $s.StartsWith('from __future__ import annotations')) {
+              if ($s.StartsWith('"""')) {
+                $end = $s.IndexOf('"""', 3)
+                if ($end -ge 0) {
+                  $end = $end + 3
+                  $s = $s.Substring(0,$end) + "`r`nfrom __future__ import annotations`r`n" + $s.Substring($end)
+                } else { $s = "from __future__ import annotations`r`n" + $s }
+              } else { $s = "from __future__ import annotations`r`n" + $s }
+              Set-Content $f.FullName $s -Encoding UTF8
+            }
+          }
+
+      - name: Validate backend
+        shell: pwsh
+        run: |
+          python -m py_compile backend\app\*.py
 
       - name: Build backend executable
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --onefile --name emperator-backend --paths backend backend/launcher.py
+          if (Test-Path dist-backend) { Remove-Item dist-backend -Recurse -Force }
+          pyinstaller --noconfirm --clean --onefile --name emperator-backend --paths backend backend\launcher.py
           New-Item -ItemType Directory -Force dist-backend | Out-Null
-          Copy-Item dist/emperator-backend.exe dist-backend/emperator-backend.exe
+          Copy-Item dist\emperator-backend.exe dist-backend\emperator-backend.exe
+
+      - name: Build printer bridge executable
+        shell: pwsh
+        run: |
+          if (Test-Path dist-printer) { Remove-Item dist-printer -Recurse -Force }
+          pyinstaller --noconfirm --clean --onefile --name emperator-printer-bridge desktop\printer_bridge.py
+          New-Item -ItemType Directory -Force dist-printer | Out-Null
+          Copy-Item dist\emperator-printer-bridge.exe dist-printer\emperator-printer-bridge.exe
 
       - name: Prepare frontend for Electron packaging
         shell: pwsh
         run: |
-          if (Test-Path desktop/frontend) { Remove-Item desktop/frontend -Recurse -Force }
-          Copy-Item frontend desktop/frontend -Recurse
+          if (Test-Path desktop\frontend) { Remove-Item desktop\frontend -Recurse -Force }
+          Copy-Item frontend desktop\frontend -Recurse
+
+      - name: Verify printer UI module
+        shell: pwsh
+        run: |
+          if (-not (Test-Path desktop\frontend\printer.js)) { throw 'printer.js missing from frontend build' }
 
       - name: Install desktop dependencies
         working-directory: desktop
+        shell: pwsh
         run: npm install
 
       - name: Build Windows installer
         working-directory: desktop
+        shell: pwsh
         run: npm run dist
+
+      - name: Verify installer exists
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem desktop\dist\*.exe | Select-Object -First 1
+          if (-not $installer) { throw 'Emperator Setup.exe was not produced' }
+          Write-Host "Installer: $($installer.FullName)"
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
