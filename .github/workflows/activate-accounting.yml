@@ -1,0 +1,37 @@
+name: Activate Accounting Core
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Integrate accounting
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('backend/app/main.py'); s=p.read_text(encoding='utf-8')
+          imp='from .accounting import ACCOUNTING_SCHEMA, install_accounting_schema, mount_accounting_routes\n'
+          if imp not in s:
+              marker='from .subscription import'
+              i=s.find(marker); e=s.find('\n',i); s=s[:e+1]+imp+s[e+1:]
+          if 'install_accounting_schema(c)' not in s:
+              marker='    c.executescript(SUBSCRIPTION_SCHEMA)'
+              s=s.replace(marker,marker+'\n    install_accounting_schema(c)',1)
+          if 'mount_accounting_routes(app, conn, current_user)' not in s:
+              s += '\nmount_accounting_routes(app, conn, current_user)\n'
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Validate Python
+        run: python -m py_compile backend/app/main.py backend/app/accounting.py
+      - name: Commit integration
+        run: |
+          git config user.name 'Emperator Bot'
+          git config user.email 'bot@emperator.local'
+          git add backend/app/main.py
+          git diff --cached --quiet || git commit -m 'feat: activate accounting core'
+          git push
