@@ -1,3 +1,6 @@
+// Web/Cloud compatibility: keep the same frontend usable with a same-origin reverse proxy.
+// The desktop build continues to use the local FastAPI URL.
+(()=>{const originalFetch=window.fetch.bind(window);window.fetch=(input,init)=>{const raw=typeof input==='string'?input:(input&&input.url)||'';if(raw.startsWith('http://127.0.0.1:8000/api')){const next=raw.slice('http://127.0.0.1:8000'.length);input=next}return originalFetch(input,init)}})();
 (()=>{
 const money=n=>Number(n||0).toLocaleString('fa-IR')+' تومان';
 const pct=(u,l)=>l>0?Math.min(100,Math.round(u/l*100)):0;
