@@ -1,0 +1,30 @@
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/web/Dockerfile.backend
+    restart: unless-stopped
+    environment:
+      EMPERATOR_JWT_SECRET: ${EMPERATOR_JWT_SECRET:?set-a-long-random-secret}
+      ZARINPAL_MERCHANT_ID: ${ZARINPAL_MERCHANT_ID:-}
+      ZARINPAL_SANDBOX: ${ZARINPAL_SANDBOX:-0}
+      EMPERATOR_SMS_PROVIDER: ${EMPERATOR_SMS_PROVIDER:-mock}
+      KAVENEGAR_API_KEY: ${KAVENEGAR_API_KEY:-}
+      KAVENEGAR_SENDER: ${KAVENEGAR_SENDER:-}
+    volumes:
+      - emperator_data:/app/data
+    expose:
+      - "8000"
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/web/Dockerfile.frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+
+volumes:
+  emperator_data:
