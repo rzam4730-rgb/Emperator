@@ -1,0 +1,37 @@
+name: Activate Inventory Core
+on:
+  push:
+    branches: [main]
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch main.py
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('backend/app/main.py'); s=p.read_text(encoding='utf-8')
+          imp='from .inventory import install_inventory_schema, mount_inventory_routes\n'
+          if imp not in s:
+              marker='from .subscription import'
+              pos=s.find(marker); end=s.find('\n',pos)
+              s=s[:end+1]+imp+s[end+1:]
+          if 'install_inventory_schema(c)' not in s:
+              marker='    c.executescript(SUBSCRIPTION_SCHEMA)'
+              s=s.replace(marker,marker+'\n    install_inventory_schema(c)',1)
+          if 'mount_inventory_routes(app, conn, current_user)' not in s:
+              s += '\nmount_inventory_routes(app, conn, current_user)\n'
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Validate Python
+        run: python -m py_compile backend/app/main.py backend/app/inventory.py
+      - name: Commit integration
+        run: |
+          git config user.name 'Emperator Bot'
+          git config user.email 'bot@emperator.local'
+          git add backend/app/main.py
+          git diff --cached --quiet || git commit -m 'feat: activate inventory core'
+          git push
