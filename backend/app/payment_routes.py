@@ -1,7 +1,9 @@
 """Payment API helpers. Gateway logic remains replaceable."""
+from __future__ import annotations
+
 import json
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from .payment import get_gateway
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
@@ -22,6 +24,7 @@ CREATE TABLE IF NOT EXISTS credit_ledger(
 );
 CREATE INDEX IF NOT EXISTS idx_credit_ledger_restaurant ON credit_ledger(restaurant_id, credit_type, id DESC);
 """
+
 
 def mount_payment_routes(app, conn_factory, current_user, subscription_view, ensure_subscription, plan_limits):
     @app.get("/api/payments")
@@ -77,7 +80,11 @@ def mount_payment_routes(app, conn_factory, current_user, subscription_view, ens
         result=dict(row); result.pop("metadata_json",None); return result
 
     @app.get("/api/payments/callback/{gateway_code}")
-    def payment_callback(gateway_code:str,authority:str,status:str="OK"):
+    def payment_callback(
+        gateway_code:str,
+        authority:str=Query(...,alias="Authority"),
+        status:str=Query("OK",alias="Status")
+    ):
         c=conn_factory(); row=c.execute("SELECT * FROM payments WHERE authority=? AND gateway=?",(authority,gateway_code)).fetchone()
         if not row: c.close(); raise HTTPException(404,"تراکنش پیدا نشد")
         if row["status"]=="paid": c.close(); return {"status":"paid","payment_id":row["id"]}
