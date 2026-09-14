@@ -2,6 +2,7 @@ import os
 import secrets
 import hashlib
 import sqlite3
+import json
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
@@ -9,6 +10,8 @@ import bcrypt
 import jwt
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
+
+from .subscription import SCHEMA as SUBSCRIPTION_SCHEMA, seed_plans, ensure_subscription, plan_limits, get_usage, increment_usage, utcnow
 
 BASE = Path(__file__).resolve().parents[2]
 DB = BASE / "emperator.db"
@@ -77,6 +80,8 @@ def init_db():
     add_column_if_missing(c, "products", "restaurant_id", "INTEGER")
     add_column_if_missing(c, "customers", "restaurant_id", "INTEGER")
     add_column_if_missing(c, "orders", "restaurant_id", "INTEGER")
+    c.executescript(SUBSCRIPTION_SCHEMA)
+    seed_plans(c)
     for role in ("owner", "manager", "cashier", "kitchen", "accountant"):
         c.execute("INSERT OR IGNORE INTO roles(name) VALUES(?)", (role,))
     permissions = ("dashboard.read","orders.read","orders.write","products.read","products.write","customers.read","customers.write","inventory.read","inventory.write","finance.read","reports.read","settings.write","users.manage")
@@ -127,6 +132,24 @@ def audit(c, user, action, target_type=None, target_id=None, details=None):
     c.execute("INSERT INTO audit_logs(user_id,restaurant_id,action,target_type,target_id,details,created_at) VALUES(?,?,?,?,?,?,?)", (user["id"], user["restaurant_id"], action, target_type, target_id, details, datetime.now(timezone.utc).isoformat()))
 
 
+def subscription_view(c, restaurant_id):
+    s=ensure_subscription(c, restaurant_id)
+    limits=plan_limits(s)
+    now=utcnow()
+    expired=datetime.fromisoformat(s["expires_at"]) <= now
+    if expired and s["status"]=="active":
+        c.execute("UPDATE subscriptions SET status='expired',updated_at=? WHERE id=?",(now.isoformat(),s["id"]))
+        s=c.execute("SELECT s.*,p.code,p.name,p.price_monthly,p.limits_json FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.id=?",(s["id"],)).fetchone()
+    return {"id":s["id"],"plan_code":s["code"],"plan_name":s["name"],"price_monthly":s["price_monthly"],"status":s["status"],"starts_at":s["starts_at"],"expires_at":s["expires_at"],"auto_renew":bool(s["auto_renew"]),"limits":limits}
+
+
+def require_active_subscription(c, restaurant_id):
+    s=ensure_subscription(c, restaurant_id)
+    if s["status"]!="active" or datetime.fromisoformat(s["expires_at"])<=utcnow():
+        raise HTTPException(402,"اشتراک شما منقضی شده است. لطفاً تمدید کنید.")
+    return s
+
+
 @app.get("/api/health")
 def health(): return {"status":"ok","database":str(DB)}
 
@@ -141,6 +164,7 @@ def register(payload: dict):
         rid=c.execute("INSERT INTO restaurants(name,created_at) VALUES(?,?)",(restaurant_name,now)).lastrowid
         role_id=c.execute("SELECT id FROM roles WHERE name='owner'").fetchone()[0]; c.execute("INSERT INTO user_restaurants(user_id,restaurant_id,role_id) VALUES(?,?,?)",(uid,rid,role_id))
         c.execute("INSERT INTO products(name,category,price,icon,restaurant_id) SELECT name,category,price,icon,? FROM products WHERE restaurant_id IS NULL",(rid,))
+        ensure_subscription(c,rid)
         access=create_access_token(uid,rid,"owner"); refresh=issue_refresh_token(c,uid,rid); c.commit(); return {"access_token":access,"refresh_token":refresh,"token_type":"bearer","expires_in":ACCESS_MINUTES*60}
     except sqlite3.IntegrityError: c.rollback(); raise HTTPException(409,"این شماره موبایل قبلاً ثبت شده است")
     finally: c.close()
@@ -149,7 +173,7 @@ def register(payload: dict):
 def login(payload: dict):
     phone=str(payload.get("phone","")).strip(); password=str(payload.get("password","")); c=conn(); row=c.execute("SELECT u.id,u.name,u.phone,u.password_hash,u.status,ur.restaurant_id,r.name AS role FROM users u JOIN user_restaurants ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id WHERE u.phone=? LIMIT 1",(phone,)).fetchone()
     if not row or row["status"]!="active" or not verify_password(password,row["password_hash"]): c.close(); raise HTTPException(401,"شماره موبایل یا رمز عبور اشتباه است")
-    access=create_access_token(row["id"],row["restaurant_id"],row["role"]); refresh=issue_refresh_token(c,row["id"],row["restaurant_id"]); c.commit(); c.close(); return {"access_token":access,"refresh_token":refresh,"token_type":"bearer","expires_in":ACCESS_MINUTES*60}
+    ensure_subscription(c,row["restaurant_id"]); access=create_access_token(row["id"],row["restaurant_id"],row["role"]); refresh=issue_refresh_token(c,row["id"],row["restaurant_id"]); c.commit(); c.close(); return {"access_token":access,"refresh_token":refresh,"token_type":"bearer","expires_in":ACCESS_MINUTES*60}
 
 @app.post("/api/auth/refresh")
 def refresh(payload: dict):
@@ -170,6 +194,48 @@ def logout(payload: dict,user=Depends(current_user)):
 
 @app.get("/api/auth/me")
 def me(user=Depends(current_user)): return user
+
+@app.get("/api/plans")
+def list_plans(user=Depends(current_user)):
+    c=conn(); rows=[]
+    for p in c.execute("SELECT * FROM plans WHERE active=1 ORDER BY price_monthly").fetchall():
+        rows.append({"code":p["code"],"name":p["name"],"price_monthly":p["price_monthly"],"limits":plan_limits(p)})
+    c.close(); return rows
+
+@app.get("/api/subscription")
+def get_subscription(user=Depends(current_user)):
+    c=conn(); s=subscription_view(c,user["restaurant_id"]); rid=user["restaurant_id"]
+    customers=c.execute("SELECT COUNT(*) FROM customers WHERE restaurant_id=?",(rid,)).fetchone()[0]
+    inv=get_usage(c,rid,"invoices_daily"); sms=get_usage(c,rid,"sms_monthly"); ai=get_usage(c,rid,"ai_monthly")
+    s["usage"]={"customers":customers,"invoices_today":inv,"sms_used":sms,"ai_used":ai}
+    c.commit(); c.close(); return s
+
+@app.get("/api/usage")
+def usage(user=Depends(current_user)):
+    c=conn(); s=ensure_subscription(c,user["restaurant_id"]); l=plan_limits(s); rid=user["restaurant_id"]
+    result={"invoices_today":{"used":get_usage(c,rid,"invoices_daily"),"limit":l["invoice_daily_limit"]},"customers":{"used":c.execute("SELECT COUNT(*) FROM customers WHERE restaurant_id=?",(rid,)).fetchone()[0],"limit":l["customer_limit"]},"sms":{"used":get_usage(c,rid,"sms_monthly"),"limit":l["sms_credits"]},"ai":{"used":get_usage(c,rid,"ai_monthly"),"limit":l["ai_credits"]}}
+    c.close(); return result
+
+@app.post("/api/subscription/upgrade")
+def upgrade_subscription(payload:dict,user=Depends(current_user)):
+    code=str(payload.get("plan","" )).strip().lower(); c=conn(); plan=c.execute("SELECT * FROM plans WHERE code=? AND active=1",(code,)).fetchone()
+    if not plan: c.close(); raise HTTPException(404,"پلن پیدا نشد")
+    old=ensure_subscription(c,user["restaurant_id"]); now=utcnow(); expires=now+timedelta(days=30)
+    c.execute("UPDATE subscriptions SET plan_id=?,status='active',starts_at=?,expires_at=?,updated_at=? WHERE restaurant_id=?",(plan["id"],now.isoformat(),expires.isoformat(),now.isoformat(),user["restaurant_id"]))
+    c.execute("INSERT INTO subscription_events(restaurant_id,event_type,plan_id,amount,metadata_json,created_at) VALUES(?,?,?,?,?,?)",(user["restaurant_id"],"upgrade",plan["id"],plan["price_monthly"],json.dumps({"from":old["code"]},ensure_ascii=False),now.isoformat()))
+    c.commit(); result=subscription_view(c,user["restaurant_id"]); c.commit(); c.close(); return result
+
+@app.post("/api/subscription/renew")
+def renew_subscription(user=Depends(current_user)):
+    c=conn(); old=ensure_subscription(c,user["restaurant_id"]); now=utcnow(); base=datetime.fromisoformat(old["expires_at"])
+    start=base if base>now else now; expires=start+timedelta(days=30)
+    c.execute("UPDATE subscriptions SET status='active',starts_at=?,expires_at=?,updated_at=? WHERE restaurant_id=?",(start.isoformat(),expires.isoformat(),now.isoformat(),user["restaurant_id"]))
+    c.execute("INSERT INTO subscription_events(restaurant_id,event_type,plan_id,amount,metadata_json,created_at) VALUES(?,?,?,?,?,?)",(user["restaurant_id"],"renew",old["plan_id"],old["price_monthly"],json.dumps({},ensure_ascii=False),now.isoformat()))
+    c.commit(); result=subscription_view(c,user["restaurant_id"]); c.close(); return result
+
+@app.get("/api/subscription/events")
+def subscription_events(user=Depends(current_user)):
+    c=conn(); rows=[dict(x) for x in c.execute("SELECT e.*,p.code plan_code,p.name plan_name FROM subscription_events e LEFT JOIN plans p ON p.id=e.plan_id WHERE e.restaurant_id=? ORDER BY e.id DESC LIMIT 100",(user["restaurant_id"],))]; c.close(); return rows
 
 @app.get("/api/users")
 def list_users(user=Depends(require_permission("users.manage"))):
@@ -249,9 +315,14 @@ def customers(user=Depends(require_permission("customers.read"))):
 def add_customer(x:dict,user=Depends(require_permission("customers.write"))):
     if not x.get("name") or not x.get("phone"): raise HTTPException(400,"نام و شماره تلفن الزامی است")
     c=conn()
-    try: cur=c.execute("INSERT INTO customers(name,phone,address,restaurant_id) VALUES(?,?,?,?)",(x["name"],x["phone"],x.get("address",""),user["restaurant_id"])); c.commit()
+    try:
+        s=require_active_subscription(c,user["restaurant_id"]); limits=plan_limits(s); count=c.execute("SELECT COUNT(*) FROM customers WHERE restaurant_id=?",(user["restaurant_id"],)).fetchone()[0]
+        if count>=limits["customer_limit"]: raise HTTPException(402,"سقف مشتری پلن شما تکمیل شده است")
+        cur=c.execute("INSERT INTO customers(name,phone,address,restaurant_id) VALUES(?,?,?,?)",(x["name"],x["phone"],x.get("address",""),user["restaurant_id"])); c.commit()
     except sqlite3.IntegrityError: c.close(); raise HTTPException(400,"این شماره قبلاً ثبت شده است")
-    row=dict(c.execute("SELECT * FROM customers WHERE id=?",(cur.lastrowid,)).fetchone()); c.close(); return row
+    finally:
+        if c: c.close()
+    return dict(cur and {"id":cur.lastrowid,"name":x["name"],"phone":x["phone"],"address":x.get("address","")})
 
 @app.get("/api/orders")
 def orders(user=Depends(require_permission("orders.read"))):
@@ -261,17 +332,23 @@ def orders(user=Depends(require_permission("orders.read"))):
 def create_order(payload:dict,user=Depends(require_permission("orders.write"))):
     items=payload.get("items",[])
     if not items: raise HTTPException(400,"سبد سفارش خالی است")
-    c=conn(); lines=[]; total=0
-    for item in items:
-        p=c.execute("SELECT * FROM products WHERE id=? AND active=1 AND restaurant_id=?",(item.get("product_id"),user["restaurant_id"])).fetchone()
-        if not p: continue
-        q=max(1,int(item.get("quantity",1))); total+=p["price"]*q; lines.append((p,q))
-    if not lines: c.close(); raise HTTPException(400,"محصول معتبر وجود ندارد")
-    customer_id=payload.get("customer_id")
-    if customer_id and not c.execute("SELECT 1 FROM customers WHERE id=? AND restaurant_id=?",(customer_id,user["restaurant_id"])).fetchone(): customer_id=None
-    cur=c.execute("INSERT INTO orders(customer_id,restaurant_id,status,total,payment_method,created_at) VALUES(?,?,?,?,?,?)",(customer_id,user["restaurant_id"],"جدید",total,payload.get("payment_method","نقدی"),datetime.now(timezone.utc).isoformat())); oid=cur.lastrowid
-    for p,q in lines: c.execute("INSERT INTO order_items(order_id,product_id,name,price,quantity) VALUES(?,?,?,?,?)",(oid,p["id"],p["name"],p["price"],q))
-    c.commit(); row=dict(c.execute("SELECT * FROM orders WHERE id=?",(oid,)).fetchone()); c.close(); return row
+    c=conn()
+    try:
+        s=require_active_subscription(c,user["restaurant_id"]); limits=plan_limits(s); today=get_usage(c,user["restaurant_id"],"invoices_daily")
+        if today>=limits["invoice_daily_limit"]: raise HTTPException(402,"سقف فاکتور روزانه پلن شما تکمیل شده است")
+        lines=[]; total=0
+        for item in items:
+            p=c.execute("SELECT * FROM products WHERE id=? AND active=1 AND restaurant_id=?",(item.get("product_id"),user["restaurant_id"])).fetchone()
+            if not p: continue
+            q=max(1,int(item.get("quantity",1))); total+=p["price"]*q; lines.append((p,q))
+        if not lines: raise HTTPException(400,"محصول معتبر وجود ندارد")
+        customer_id=payload.get("customer_id")
+        if customer_id and not c.execute("SELECT 1 FROM customers WHERE id=? AND restaurant_id=?",(customer_id,user["restaurant_id"])).fetchone(): customer_id=None
+        cur=c.execute("INSERT INTO orders(customer_id,restaurant_id,status,total,payment_method,created_at) VALUES(?,?,?,?,?,?)",(customer_id,user["restaurant_id"],"جدید",total,payload.get("payment_method","نقدی"),datetime.now(timezone.utc).isoformat())); oid=cur.lastrowid
+        for p,q in lines: c.execute("INSERT INTO order_items(order_id,product_id,name,price,quantity) VALUES(?,?,?,?,?)",(oid,p["id"],p["name"],p["price"],q))
+        increment_usage(c,user["restaurant_id"],"invoices_daily",1)
+        c.commit(); return dict(c.execute("SELECT * FROM orders WHERE id=?",(oid,)).fetchone())
+    finally: c.close()
 
 @app.get("/api/dashboard")
 def dashboard(user=Depends(require_permission("dashboard.read"))):
