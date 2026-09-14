@@ -1,0 +1,53 @@
+name: Complete Emperator Platform
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Activate core modules
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('backend/app/main.py'); s=p.read_text(encoding='utf-8')
+          imports=[
+            'from .order_lifecycle import install_lifecycle_schema, mount_order_lifecycle_routes\n',
+            'from .order_inventory import install_order_inventory_schema, mount_order_inventory_routes\n',
+            'from .customer_club import install_customer_club_schema, mount_customer_club_routes, award_order_points\n',
+            'from .sms import get_sms_provider\n',
+          ]
+          marker='from .subscription import'
+          pos=s.find(marker); end=s.find('\n',pos)+1
+          for imp in imports:
+            if imp not in s: s=s[:end]+imp+s[end:]; end+=len(imp)
+          schema_marker='    seed_plans(c)'
+          if schema_marker in s and 'install_lifecycle_schema(c)' not in s:
+            s=s.replace(schema_marker, schema_marker+'\n    install_lifecycle_schema(c)\n    install_order_inventory_schema(c)\n    install_customer_club_schema(c)',1)
+          mounts='\nmount_order_lifecycle_routes(app, conn, current_user)\n'
+          if 'mount_order_lifecycle_routes(app, conn, current_user)' not in s: s+=mounts
+          if 'mount_order_inventory_routes(app, conn, current_user)' not in s: s+='mount_order_inventory_routes(app, conn, current_user)\n'
+          if 'mount_customer_club_routes(app, conn, current_user, get_sms_provider)' not in s and 'mount_customer_club_routes(app, conn, current_user)' not in s: s+='mount_customer_club_routes(app, conn, current_user, get_sms_provider)\n'
+          elif 'mount_customer_club_routes(app, conn, current_user)' in s and 'get_sms_provider' in s:
+            s=s.replace('mount_customer_club_routes(app, conn, current_user)', 'mount_customer_club_routes(app, conn, current_user, get_sms_provider)')
+          p.write_text(s,encoding='utf-8')
+      - name: Validate Python modules
+        shell: bash
+        run: |
+          python -m py_compile backend/app/main.py backend/app/order_lifecycle.py backend/app/order_inventory.py backend/app/customer_club.py backend/app/sms.py
+      - name: Smoke import
+        shell: bash
+        run: |
+          PYTHONPATH=. python -c "from backend.app.main import app; print('Emperator API import OK')"
+      - name: Commit integration
+        shell: bash
+        run: |
+          git config user.name 'Emperator Bot'
+          git config user.email 'bot@emperator.local'
+          git add backend/app/main.py
+          git diff --cached --quiet || git commit -m 'feat: activate complete platform lifecycle'
+          git push
