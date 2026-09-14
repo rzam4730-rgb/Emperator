@@ -72,8 +72,8 @@ def init_db():
     CREATE TABLE IF NOT EXISTS role_permissions(role_id INTEGER NOT NULL,permission_id INTEGER NOT NULL,PRIMARY KEY(role_id,permission_id),FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE CASCADE,FOREIGN KEY(permission_id) REFERENCES permissions(id) ON DELETE CASCADE);
     CREATE TABLE IF NOT EXISTS user_restaurants(user_id INTEGER NOT NULL,restaurant_id INTEGER NOT NULL,role_id INTEGER NOT NULL,PRIMARY KEY(user_id,restaurant_id),FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,FOREIGN KEY(restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE,FOREIGN KEY(role_id) REFERENCES roles(id));
     CREATE TABLE IF NOT EXISTS refresh_tokens(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,restaurant_id INTEGER NOT NULL,token_hash TEXT NOT NULL UNIQUE,expires_at TEXT NOT NULL,created_at TEXT NOT NULL,revoked_at TEXT,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,FOREIGN KEY(restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS audit_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,restaurant_id INTEGER,action TEXT NOT NULL,target_type TEXT,target_id INTEGER,details TEXT,created_at TEXT NOT NULL);
     """)
-    # Multi-tenant migration for databases created by the original version.
     add_column_if_missing(c, "products", "restaurant_id", "INTEGER")
     add_column_if_missing(c, "customers", "restaurant_id", "INTEGER")
     add_column_if_missing(c, "orders", "restaurant_id", "INTEGER")
@@ -110,7 +110,7 @@ def current_user(authorization: str | None = Header(default=None)):
         user_id, restaurant_id = int(payload["sub"]), int(payload["rid"])
     except (jwt.InvalidTokenError, KeyError, ValueError):
         raise HTTPException(401, "توکن نامعتبر یا منقضی شده است")
-    c=conn(); row=c.execute("SELECT u.id,u.name,u.phone,u.status,ur.restaurant_id,r.name AS role,rest.status AS restaurant_status FROM users u JOIN user_restaurants ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id JOIN restaurants rest ON rest.id=ur.restaurant_id WHERE u.id=? AND ur.restaurant_id=?",(user_id,restaurant_id)).fetchone(); c.close()
+    c=conn(); row=c.execute("SELECT u.id,u.name,u.phone,u.status,ur.restaurant_id,r.name AS role,rest.name AS restaurant_name,rest.status AS restaurant_status FROM users u JOIN user_restaurants ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id JOIN restaurants rest ON rest.id=ur.restaurant_id WHERE u.id=? AND ur.restaurant_id=?",(user_id,restaurant_id)).fetchone(); c.close()
     if not row or row["status"]!="active" or row["restaurant_status"]!="active": raise HTTPException(401,"حساب یا کسب‌وکار فعال نیست")
     return dict(row)
 
@@ -123,6 +123,10 @@ def require_permission(permission: str):
     return dependency
 
 
+def audit(c, user, action, target_type=None, target_id=None, details=None):
+    c.execute("INSERT INTO audit_logs(user_id,restaurant_id,action,target_type,target_id,details,created_at) VALUES(?,?,?,?,?,?,?)", (user["id"], user["restaurant_id"], action, target_type, target_id, details, datetime.now(timezone.utc).isoformat()))
+
+
 @app.get("/api/health")
 def health(): return {"status":"ok","database":str(DB)}
 
@@ -133,10 +137,9 @@ def register(payload: dict):
     c=conn()
     try:
         now=datetime.now(timezone.utc).isoformat(); c.execute("BEGIN")
-        cur=c.execute("INSERT INTO users(name,phone,password_hash,created_at) VALUES(?,?,?,?)",(name,phone,hash_password(password),now)); uid=cur.lastrowid
-        cur=c.execute("INSERT INTO restaurants(name,created_at) VALUES(?,?)",(restaurant_name,now)); rid=cur.lastrowid
+        uid=c.execute("INSERT INTO users(name,phone,password_hash,created_at) VALUES(?,?,?,?)",(name,phone,hash_password(password),now)).lastrowid
+        rid=c.execute("INSERT INTO restaurants(name,created_at) VALUES(?,?)",(restaurant_name,now)).lastrowid
         role_id=c.execute("SELECT id FROM roles WHERE name='owner'").fetchone()[0]; c.execute("INSERT INTO user_restaurants(user_id,restaurant_id,role_id) VALUES(?,?,?)",(uid,rid,role_id))
-        # Copy built-in starter menu into the new tenant.
         c.execute("INSERT INTO products(name,category,price,icon,restaurant_id) SELECT name,category,price,icon,? FROM products WHERE restaurant_id IS NULL",(rid,))
         access=create_access_token(uid,rid,"owner"); refresh=issue_refresh_token(c,uid,rid); c.commit(); return {"access_token":access,"refresh_token":refresh,"token_type":"bearer","expires_in":ACCESS_MINUTES*60}
     except sqlite3.IntegrityError: c.rollback(); raise HTTPException(409,"این شماره موبایل قبلاً ثبت شده است")
@@ -167,6 +170,67 @@ def logout(payload: dict,user=Depends(current_user)):
 
 @app.get("/api/auth/me")
 def me(user=Depends(current_user)): return user
+
+@app.get("/api/users")
+def list_users(user=Depends(require_permission("users.manage"))):
+    c=conn(); rows=[dict(x) for x in c.execute("SELECT u.id,u.name,u.phone,u.status,u.created_at,r.name role,r.id role_id FROM users u JOIN user_restaurants ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id WHERE ur.restaurant_id=? ORDER BY u.id DESC",(user["restaurant_id"],))]; c.close(); return rows
+
+@app.get("/api/roles")
+def list_roles(user=Depends(require_permission("users.manage"))):
+    c=conn(); rows=[]
+    for r in c.execute("SELECT id,name FROM roles ORDER BY id").fetchall():
+        perms=[x[0] for x in c.execute("SELECT p.name FROM permissions p JOIN role_permissions rp ON rp.permission_id=p.id WHERE rp.role_id=? ORDER BY p.name",(r["id"],)).fetchall()]
+        rows.append({"id":r["id"],"name":r["name"],"permissions":perms})
+    c.close(); return rows
+
+@app.get("/api/permissions")
+def list_permissions(user=Depends(require_permission("users.manage"))):
+    c=conn(); rows=[dict(x) for x in c.execute("SELECT id,name FROM permissions ORDER BY name")]; c.close(); return rows
+
+@app.post("/api/users")
+def create_user(payload:dict,user=Depends(require_permission("users.manage"))):
+    name=str(payload.get("name","")).strip(); phone=str(payload.get("phone","")).strip(); password=str(payload.get("password","")); role_name=str(payload.get("role","cashier")).strip().lower()
+    if len(name)<2 or len(phone)<7 or len(password)<8: raise HTTPException(400,"نام، شماره موبایل و رمز حداقل ۸ کاراکتری الزامی است")
+    c=conn()
+    try:
+        role=c.execute("SELECT id,name FROM roles WHERE name=?",(role_name,)).fetchone()
+        if not role: raise HTTPException(400,"نقش نامعتبر است")
+        if role_name=="owner" and user["role"]!="owner": raise HTTPException(403,"فقط مالک می‌تواند مالک جدید ایجاد کند")
+        c.execute("BEGIN"); uid=c.execute("INSERT INTO users(name,phone,password_hash,created_at) VALUES(?,?,?,?)",(name,phone,hash_password(password),datetime.now(timezone.utc).isoformat())).lastrowid
+        c.execute("INSERT INTO user_restaurants(user_id,restaurant_id,role_id) VALUES(?,?,?)",(uid,user["restaurant_id"],role["id"])); audit(c,user,"user.create","user",uid,f"role={role_name}"); c.commit()
+        return {"id":uid,"name":name,"phone":phone,"role":role_name,"status":"active"}
+    except sqlite3.IntegrityError: c.rollback(); raise HTTPException(409,"این شماره موبایل قبلاً ثبت شده است")
+    finally: c.close()
+
+@app.patch("/api/users/{user_id}")
+def update_user(user_id:int,payload:dict,user=Depends(require_permission("users.manage"))):
+    c=conn(); target=c.execute("SELECT u.id,u.name,u.phone,u.status,r.name role FROM users u JOIN user_restaurants ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id WHERE u.id=? AND ur.restaurant_id=?",(user_id,user["restaurant_id"])).fetchone()
+    if not target: c.close(); raise HTTPException(404,"کاربر پیدا نشد")
+    if user_id==user["id"] and payload.get("status") in ("disabled","inactive"): c.close(); raise HTTPException(400,"نمی‌توانید حساب خودتان را غیرفعال کنید")
+    if target["role"]=="owner" and user["role"]!="owner": c.close(); raise HTTPException(403,"فقط مالک می‌تواند مالک را ویرایش کند")
+    if payload.get("status") in ("active","disabled"): c.execute("UPDATE users SET status=? WHERE id=?",(payload["status"],user_id))
+    if payload.get("name"): c.execute("UPDATE users SET name=? WHERE id=?",(str(payload["name"]).strip(),user_id))
+    if payload.get("password"):
+        if len(str(payload["password"]))<8: c.close(); raise HTTPException(400,"رمز عبور باید حداقل ۸ کاراکتر باشد")
+        c.execute("UPDATE users SET password_hash=? WHERE id=?",(hash_password(str(payload["password"])),user_id))
+    if payload.get("role"):
+        role=c.execute("SELECT id,name FROM roles WHERE name=?",(str(payload["role"]).lower(),)).fetchone()
+        if not role: c.close(); raise HTTPException(400,"نقش نامعتبر است")
+        if role["name"]=="owner" and user["role"]!="owner": c.close(); raise HTTPException(403,"فقط مالک می‌تواند نقش مالک بدهد")
+        c.execute("UPDATE user_restaurants SET role_id=? WHERE user_id=? AND restaurant_id=?",(role["id"],user_id,user["restaurant_id"]))
+    audit(c,user,"user.update","user",user_id); c.commit(); row=dict(c.execute("SELECT u.id,u.name,u.phone,u.status,r.name role FROM users u JOIN user_restaurants ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id WHERE u.id=? AND ur.restaurant_id=?",(user_id,user["restaurant_id"])).fetchone()); c.close(); return row
+
+@app.delete("/api/users/{user_id}")
+def delete_user(user_id:int,user=Depends(require_permission("users.manage"))):
+    if user_id==user["id"]: raise HTTPException(400,"نمی‌توانید خودتان را حذف کنید")
+    c=conn(); target=c.execute("SELECT u.id,r.name role FROM users u JOIN user_restaurants ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id WHERE u.id=? AND ur.restaurant_id=?",(user_id,user["restaurant_id"])).fetchone()
+    if not target: c.close(); raise HTTPException(404,"کاربر پیدا نشد")
+    if target["role"]=="owner" and user["role"]!="owner": c.close(); raise HTTPException(403,"فقط مالک می‌تواند مالک را حذف کند")
+    c.execute("DELETE FROM user_restaurants WHERE user_id=? AND restaurant_id=?",(user_id,user["restaurant_id"])); audit(c,user,"user.remove_from_restaurant","user",user_id); c.commit(); c.close(); return {"status":"ok"}
+
+@app.get("/api/audit-logs")
+def audit_logs(user=Depends(require_permission("users.manage"))):
+    c=conn(); rows=[dict(x) for x in c.execute("SELECT a.*,u.name user_name FROM audit_logs a LEFT JOIN users u ON u.id=a.user_id WHERE a.restaurant_id=? ORDER BY a.id DESC LIMIT 100",(user["restaurant_id"],))]; c.close(); return rows
 
 @app.get("/api/products")
 def products(user=Depends(require_permission("products.read"))):
