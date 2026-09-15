@@ -1,3 +1,38 @@
+import os
+from pathlib import Path
+
+
+def load_local_env():
+    """Load a local .env file without adding a runtime dependency.
+
+    Environment variables already supplied by the OS always win. This keeps
+    Kavenegar credentials out of source code while allowing the Windows build
+    to run with a local backend/.env file.
+    """
+    candidates = [
+        Path(__file__).resolve().parent / ".env",
+        Path(__file__).resolve().parents[1] / ".env",
+    ]
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            for raw in path.read_text(encoding="utf-8-sig").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+        except OSError as exc:
+            print("Local .env load warning:", exc)
+        break
+
+
+load_local_env()
+
 import uvicorn
 
 from app.main import (
