@@ -1,5 +1,17 @@
 // Emperator auth response hardening.
 (function(){
+  const nativeFetch=window.fetch.bind(window);
+  window.fetch=function(input,init){
+    try{
+      const raw=typeof input==='string'?input:input.url;
+      if(location.protocol!=='file:' && raw && raw.indexOf('http://127.0.0.1:8000')===0){
+        const u=new URL(raw);
+        const target=u.pathname+u.search;
+        input=typeof input==='string'?target:new Request(target,input);
+      }
+    }catch(_){ }
+    return nativeFetch(input,init);
+  };
   async function readJson(response, context){
     const text=await response.text();
     if(!text.trim()) throw Error(`${context}: سرور پاسخ خالی برگرداند (HTTP ${response.status})`);
