@@ -42,6 +42,7 @@ from app.main import (
 from app.compat_routes import seed_core, mount_core_routes
 from app.bootstrap import ensure_initial_owner
 from app.subscription import ensure_subscription, plan_limits, get_usage, utcnow
+from app.static_frontend import mount_frontend
 
 
 def activate():
@@ -64,6 +65,7 @@ def activate():
             (user["id"], user["restaurant_id"], action, target_type, target_id, details, utcnow().isoformat()),
         ),
     )
+    mount_frontend(app)
 
 
 if __name__ == '__main__':
