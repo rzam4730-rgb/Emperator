@@ -36,7 +36,7 @@ load_local_env()
 import uvicorn
 
 from app.main import (
-    app, conn, current_user, require_permission, hash_password, verify_password,
+    app, conn, init_db, current_user, require_permission, hash_password, verify_password,
     create_access_token, issue_refresh_token, hash_refresh_token,
 )
 from app.compat_routes import seed_core, mount_core_routes
@@ -44,6 +44,9 @@ from app.subscription import ensure_subscription, plan_limits, get_usage, utcnow
 
 
 def activate():
+    # Database schema must exist before compatibility route seeding. FastAPI's
+    # startup event runs only after uvicorn starts, while activate() runs first.
+    init_db()
     c = conn()
     try:
         seed_core(c)
