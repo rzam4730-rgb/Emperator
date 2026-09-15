@@ -1,11 +1,9 @@
 """Compatibility and core route activation for the Emperator API."""
 from __future__ import annotations
 
-import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
-import bcrypt
 from fastapi import Depends, HTTPException
 
 
@@ -33,24 +31,6 @@ def seed_core(c):
         for name in names:
             pid = c.execute("SELECT id FROM permissions WHERE name=?", (name,)).fetchone()[0]
             c.execute("INSERT OR IGNORE INTO role_permissions(role_id,permission_id) VALUES(?,?)", (role_id, pid))
-
-    # First-run bootstrap: create one owner account only when the database has
-    # no users. This makes a fresh local installation immediately usable.
-    if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
-        now = datetime.now(timezone.utc).isoformat()
-        restaurant_id = c.execute(
-            "INSERT INTO restaurants(name,status,created_at) VALUES(?,?,?)",
-            ("مجموعه اولیه امپراتور", "active", now),
-        ).lastrowid
-        password_hash = bcrypt.hashpw(b"1234", bcrypt.gensalt()).decode("utf-8")
-        user_id = c.execute(
-            "INSERT INTO users(name,phone,password_hash,created_at) VALUES(?,?,?,?)",
-            ("مدیر امپراتور", "09120000000", password_hash, now),
-        ).lastrowid
-        c.execute(
-            "INSERT INTO user_restaurants(user_id,restaurant_id,role_id) VALUES(?,?,?)",
-            (user_id, restaurant_id, owner_id),
-        )
 
 
 def mount_core_routes(app, conn, current_user, require_permission, hash_password, verify_password,
