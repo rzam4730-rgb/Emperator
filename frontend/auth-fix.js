@@ -1,4 +1,4 @@
-// Emperator auth response hardening. Loaded by frontend/app.js wrapper.
+// Emperator auth response hardening.
 (function(){
   async function readJson(response, context){
     const text=await response.text();
@@ -38,6 +38,5 @@
       };
     }
   };
-  function install(){if(window.emperatorAuthFix)window.emperatorAuthFix.install()}
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,true);else install();
+  window.emperatorAuthFix.install();
 })();
