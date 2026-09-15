@@ -23,7 +23,8 @@
       <div class="card" style="margin-top:16px"><h3>آخرین پیام‌ها</h3><div id="smsHistory">در حال بارگذاری...</div></div>`;
 
     try {
-      const [balances, history] = await Promise.all([api('/api/credits'), api('/api/sms/history')]);
+      // api() already prefixes /api, so module endpoints must be passed without a second /api.
+      const [balances, history] = await Promise.all([api('/credits'), api('/sms/history')]);
       document.getElementById('smsBalance').textContent = Number(balances.sms || 0).toLocaleString('fa-IR');
       const box = document.getElementById('smsHistory');
       box.innerHTML = history.length ? history.map(x => `<div style="padding:10px 0;border-bottom:1px solid #333"><b>${x.receptor}</b> — ${x.status === 'sent' ? 'ارسال شد' : 'ناموفق'}<br><small>${x.message}</small></div>`).join('') : 'هنوز پیامکی ارسال نشده است.';
@@ -35,7 +36,7 @@
       const result = document.getElementById('smsResult');
       result.textContent = 'در حال ارسال...';
       try {
-        const data = await api('/api/sms/send', {method:'POST', body: JSON.stringify({receptor:document.getElementById('smsReceptor').value, message:document.getElementById('smsMessage').value})});
+        const data = await api('/sms/send', {method:'POST', body: JSON.stringify({receptor:document.getElementById('smsReceptor').value, message:document.getElementById('smsMessage').value})});
         result.textContent = `✓ ارسال شد | اعتبار باقی‌مانده: ${Number(data.balance || 0).toLocaleString('fa-IR')}`;
         showSmsPage();
       } catch (e) { result.textContent = e.message || 'ارسال ناموفق بود'; }
