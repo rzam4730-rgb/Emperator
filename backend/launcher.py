@@ -40,6 +40,7 @@ from app.main import (
     create_access_token, issue_refresh_token, hash_refresh_token,
 )
 from app.compat_routes import seed_core, mount_core_routes
+from app.bootstrap import ensure_initial_owner
 from app.subscription import ensure_subscription, plan_limits, get_usage, utcnow
 
 
@@ -50,6 +51,7 @@ def activate():
     c = conn()
     try:
         seed_core(c)
+        ensure_initial_owner(c, hash_password)
         c.commit()
     finally:
         c.close()
