@@ -1,21 +1,31 @@
 /* Emperator functional patch layer. Loaded last so it can safely override legacy handlers. */
 (function(){
   const alertUi=(m,t='امپراتور')=>window.epAlert?window.epAlert(m,t):Promise.resolve(window.alert(m));
+  const confirmUi=(m,t='تأیید عملیات')=>window.epConfirm?window.epConfirm(m,t):Promise.resolve(window.confirm(m));
+  const promptUi=(m,d='',t='امپراتور')=>window.epPrompt?window.epPrompt(m,d,t):Promise.resolve(window.prompt(m,d));
+  const fa=n=>Number(n||0).toLocaleString('fa-IR');
+  const esc=v=>String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
+
   window.checkout=async function(){
     if(!Array.isArray(window.cart)||!window.cart.length){await alertUi('ابتدا حداقل یک محصول به سفارش اضافه کنید','ثبت سفارش');return}
-    try{
-      const payload={items:window.cart.map(x=>({product_id:x.id,quantity:x.qty})),payment_method:'نقدی'};
-      const order=await window.api('/orders',{method:'POST',body:JSON.stringify(payload)});
-      window.cart=[];
-      if(typeof window.renderCart==='function')window.renderCart();
-      if(typeof window.refresh==='function')await window.refresh();
-      await alertUi('سفارش شماره '+order.id+' با موفقیت ثبت شد','ثبت سفارش موفق');
-    }catch(e){await alertUi(e?.message||'ثبت سفارش انجام نشد','خطا در ثبت سفارش')}
-  };
-  function wire(){
-    const b=document.getElementById('checkoutBtn');
-    if(b)b.onclick=window.checkout;
-    document.querySelectorAll('#dashboard .page-head .primary,#orders .page-head .primary').forEach(x=>x.onclick=()=>window.showPage&&window.showPage('pos'));
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire,{once:true});else wire();
+    try{const order=await window.api('/orders',{method:'POST',body:JSON.stringify({items:window.cart.map(x=>({product_id:x.id,quantity:x.qty})),payment_method:'نقدی')});window.cart=[];if(typeof window.renderCart==='function')window.renderCart();if(typeof window.refresh==='function')await window.refresh();await alertUi('سفارش شماره '+order.id+' با موفقیت ثبت شد','ثبت سفارش موفق');await loadOrders();await loadKds()}catch(e){await alertUi(e?.message||'ثبت سفارش انجام نشد','خطا در ثبت سفارش')}};
+
+  async function orderStatus(id,status){
+    if(status==='لغوشده' && !(await confirmUi('آیا از لغو این سفارش مطمئن هستید؟','لغو سفارش')))return;
+    try{await window.api('/orders/'+id+'/status',{method:'PATCH',body:JSON.stringify({status})});await loadOrders();await loadKds();if(typeof window.refresh==='function')await window.refresh();await alertUi('وضعیت سفارش به «'+status+'» تغییر کرد','عملیات موفق')}catch(e){await alertUi(e?.message||'تغییر وضعیت سفارش انجام نشد','خطا')}}
+
+  function orderActions(o){const a=[];if(o.status==='جدید')a.push(`<button data-status="${o.id}|در حال آماده‌سازی">شروع آماده‌سازی</button>`,`<button data-status="${o.id}|لغوشده">لغو</button>`);else if(o.status==='در حال آماده‌سازی')a.push(`<button data-status="${o.id}|آماده">آماده</button>`,`<button data-status="${o.id}|لغوشده">لغو</button>`);else if(o.status==='آماده')a.push(`<button data-status="${o.id}|تحویل‌شده">تحویل شد</button>`);return a.join('')}
+
+  async function loadOrders(){const root=document.querySelector('#orders .table');if(!root)return;try{const rows=await window.api('/orders');root.innerHTML=`<div class="tr th"><span>شماره</span><span>مشتری</span><span>مبلغ</span><span>وضعیت</span><span>عملیات</span></div>`+rows.map(o=>`<div class="tr"><span>#${o.id}</span><span>${esc(o.customer_id||'مشتری حضوری')}</span><span>${fa(o.total)} تومان</span><b class="${o.status==='تحویل‌شده'?'done':o.status==='در حال آماده‌سازی'?'cooking':o.status==='جدید'?'new':'danger'}">${esc(o.status)}</b><span class="user-actions">${orderActions(o)}</span></div>`).join('')||'<div class="rank">هنوز سفارشی ثبت نشده است.</div>';root.querySelectorAll('[data-status]').forEach(b=>b.onclick=()=>{const [id,status]=b.dataset.status.split('|');orderStatus(id,status)})}catch(e){root.innerHTML=`<div class="rank">${esc(e?.message||'بارگذاری سفارش‌ها انجام نشد')}</div>`}}
+
+  async function loadKds(){const root=document.querySelector('#kitchen .kanban');if(!root)return;try{const rows=await window.api('/kds/orders');const groups={'جدید':[],'در حال آماده‌سازی':[],'آماده':[]};rows.forEach(o=>(groups[o.status]||[]).push(o));const meta={'جدید':['🔵','شروع آماده‌سازی'],'در حال آماده‌سازی':['🟡','آماده'],'آماده':['🟢','تحویل شد']};root.innerHTML=Object.keys(groups).map(status=>`<div class="kanban-col"><h3>${meta[status][0]} ${status} <span>${fa(groups[status].length)}</span></h3>${groups[status].map(o=>`<article><strong>#${o.id}</strong><br><b>${o.items.map(i=>`${i.quantity} × ${esc(i.name)}`).join('، ')||'سفارش'}</b><small>${esc(o.customer_name||'مشتری حضوری')}</small><button class="kds-action" data-kds="${o.id}|${meta[status][1]}" style="margin-top:10px;width:100%">${meta[status][1]}</button>${status!=='آماده'?`<button class="kds-action cancel" data-kds="${o.id}|لغوشده" style="margin-top:6px;width:100%">لغو سفارش</button>`:''}</article>`).join('')||'<article>سفارشی در این مرحله نیست.</article>'}</div>`).join('');root.querySelectorAll('[data-kds]').forEach(b=>b.onclick=()=>{const [id,status]=b.dataset.kds.split('|');orderStatus(id,status)})}catch(e){root.innerHTML=`<div class="kanban-col"><h3>خطا</h3><article>${esc(e?.message||'بارگذاری آشپزخانه انجام نشد')}</article></div>`}}
+
+  async function addCustomer(){const name=await promptUi('نام و نام خانوادگی مشتری','');if(!name)return;const phone=await promptUi('شماره موبایل مشتری','');if(!phone)return;const address=await promptUi('آدرس مشتری (اختیاری)','');try{await window.api('/customers',{method:'POST',body:JSON.stringify({name,phone,address:address||''})});await loadCustomers();await alertUi('مشتری با موفقیت ثبت شد','ثبت مشتری')}catch(e){await alertUi(e?.message||'ثبت مشتری انجام نشد','خطا')}}
+  async function loadCustomers(){const root=document.querySelector('#customers .customer-list');if(!root)return;try{const rows=await window.api('/customers');root.innerHTML=rows.map(c=>`<div class="order"><span>👤 ${esc(c.name)}</span><span>${esc(c.phone||'—')}</span><strong>${fa(c.points||0)} امتیاز</strong></div>`).join('')||'<div class="rank">هنوز مشتری ثبت نشده است.</div>';const b=document.querySelector('#customers .page-head .primary');if(b)b.onclick=addCustomer}catch(e){root.innerHTML=`<div class="rank">${esc(e?.message||'بارگذاری مشتریان انجام نشد')}</div>`}}
+  async function addProduct(){const name=await promptUi('نام محصول','');if(!name)return;const price=await promptUi('قیمت به تومان','');if(!price)return;const category=await promptUi('دسته‌بندی','غذا');try{await window.api('/products',{method:'POST',body:JSON.stringify({name,price:Number(String(price).replace(/[^0-9]/g,'')),category:category||'سایر'})});if(typeof window.refresh==='function')await window.refresh();await alertUi('محصول با موفقیت اضافه شد','ثبت محصول')}catch(e){await alertUi(e?.message||'ثبت محصول انجام نشد','خطا')}}
+
+  function wire(){const checkout=document.getElementById('checkoutBtn');if(checkout)checkout.onclick=window.checkout;const addProductBtn=document.querySelector('#products .page-head .primary');if(addProductBtn)addProductBtn.onclick=addProduct;const addCustomerBtn=document.querySelector('#customers .page-head .primary');if(addCustomerBtn)addCustomerBtn.onclick=addCustomer;document.querySelectorAll('#dashboard .page-head .primary,#orders .page-head .primary').forEach(x=>x.onclick=()=>window.showPage&&window.showPage('pos'))}
+  const oldShow=window.showPage;
+  if(typeof oldShow==='function'&&!oldShow.__functionalFix){const wrapped=function(id){oldShow(id);if(id==='orders')loadOrders();if(id==='kitchen')loadKds();if(id==='customers')loadCustomers();if(id==='products')wire()};wrapped.__functionalFix=true;window.showPage=wrapped}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{wire();loadOrders();loadKds();loadCustomers()},{once:true});else{wire();loadOrders();loadKds();loadCustomers()}
 })();
