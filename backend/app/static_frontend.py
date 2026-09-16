@@ -24,6 +24,7 @@ def _index_response(index_file: Path):
         '<script src="/assets/functional-fix.js?v=1"></script>'
         '<script src="/assets/personnel-ui.js?v=2"></script>'
         '<script src="/assets/personnel-nav-fix.js?v=1"></script>'
+        '<script src="/assets/confirmation-gate.js?v=1"></script>'
     )
     html = html.replace(marker, injection + marker)
     return HTMLResponse(html, media_type="text/html")
