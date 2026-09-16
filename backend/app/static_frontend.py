@@ -7,6 +7,9 @@ from fastapi.staticfiles import StaticFiles
 
 def _index_response(index_file: Path):
     html = index_file.read_text(encoding="utf-8")
+    marker = "</head>"
+    head_injection = '<link rel="stylesheet" href="/assets/final-polish.css?v=1">'
+    html = html.replace(marker, head_injection + marker)
     marker = "</body>"
     injection = (
         '<script src="/assets/app-core.js?v=5"></script>'
@@ -17,6 +20,7 @@ def _index_response(index_file: Path):
         '<script src="/assets/theme.js?v=4"></script>'
         '<script src="/assets/runtime-fix.js?v=1"></script>'
         '<script src="/assets/ui-polish.js?v=1"></script>'
+        '<script src="/assets/final-polish.js?v=1"></script>'
     )
     html = html.replace(marker, injection + marker)
     return HTMLResponse(html, media_type="text/html")
