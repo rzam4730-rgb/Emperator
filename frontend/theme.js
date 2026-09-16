@@ -18,6 +18,13 @@
       const moreBtn=document.getElementById('moreBtn');
       if(moreBtn) moreBtn.remove();
     }
+    document.querySelectorAll('.main-nav .nav[data-page]').forEach(function(btn){
+      btn.onclick=function(e){
+        e.preventDefault();
+        if(typeof window.emperatorNavigate==='function') window.emperatorNavigate(btn.getAttribute('data-page'));
+        else if(typeof window.showPage==='function') window.showPage(btn.getAttribute('data-page'));
+      };
+    });
     const userbar=document.querySelector('.userbar');
     if(userbar){
       let b=document.getElementById('themeToggle');
