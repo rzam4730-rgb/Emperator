@@ -1,17 +1,29 @@
 // Emperator navigation fix.
 (function(){
+  function go(id){
+    if(typeof window.showPage==='function') window.showPage(id);
+  }
   function wire(){
-    if(typeof window.showPage!=='function') return;
     document.querySelectorAll('.nav[data-page]').forEach(function(btn){
-      btn.onclick=function(e){e.preventDefault();e.stopPropagation();window.showPage(btn.dataset.page)};
+      btn.addEventListener('click',function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        go(btn.getAttribute('data-page'));
+      },true);
     });
     document.querySelectorAll('[data-go]').forEach(function(btn){
-      btn.onclick=function(e){e.preventDefault();e.stopPropagation();window.showPage(btn.dataset.go)};
+      btn.addEventListener('click',function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        go(btn.getAttribute('data-go'));
+      },true);
     });
-    document.querySelectorAll('#dashboard .page-head .primary,#orders .page-head .primary').forEach(function(btn){
-      btn.onclick=function(e){e.preventDefault();window.showPage('pos')};
-    });
+    var dash=document.querySelector('#dashboard .page-head .primary');
+    if(dash) dash.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();go('pos')},true);
+    var orders=document.querySelector('#orders .page-head .primary');
+    if(orders) orders.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();go('pos')},true);
   }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',wire,{once:true});
-  else wire();
+  function init(){ wire(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true});
+  else init();
 })();
