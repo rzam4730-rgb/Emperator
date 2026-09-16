@@ -12,7 +12,7 @@ def _index_response(index_file: Path):
     html = html.replace(marker, head_injection + marker)
     marker = "</body>"
     injection = (
-        '<script src="/assets/app-core.js?v=5"></script>'
+        '<script src="/assets/app-core.js?v=6"></script>'
         '<script src="/assets/auth-fix.js?v=5"></script>'
         '<script src="/assets/navigation-fix.js?v=5"></script>'
         '<script src="/assets/kds.js?v=4"></script>'
