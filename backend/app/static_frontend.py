@@ -9,11 +9,11 @@ def _index_response(index_file: Path):
     html = index_file.read_text(encoding="utf-8")
     marker = "</body>"
     injection = (
-        '<script src="/assets/app-core.js?v=4"></script>'
-        '<script src="/assets/auth-fix.js?v=4"></script>'
-        '<script src="/assets/navigation-fix.js?v=4"></script>'
-        '<script src="/assets/kds.js?v=1"></script>'
-        '<script src="/assets/theme.js?v=1"></script>'
+        '<script src="/assets/app-core.js?v=5"></script>'
+        '<script src="/assets/auth-fix.js?v=5"></script>'
+        '<script src="/assets/navigation-fix.js?v=5"></script>'
+        '<script src="/assets/kds.js?v=2"></script>'
+        '<script src="/assets/theme.js?v=2"></script>'
     )
     html = html.replace(marker, injection + marker)
     return HTMLResponse(html, media_type="text/html")
