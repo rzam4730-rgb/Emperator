@@ -1,42 +1,51 @@
-/* Emperator — top navigation + light/dark theme */
+/* Emperator — fixed top navigation + reliable light/dark theme */
 (function(){
   function applyTheme(mode){
-    document.documentElement.dataset.theme=mode;
-    localStorage.setItem('emperator_theme',mode);
+    mode = mode === 'light' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', mode);
+    document.body && document.body.setAttribute('data-theme', mode);
+    try{ localStorage.setItem('emperator_theme', mode); }catch(e){}
     const b=document.getElementById('themeToggle');
-    if(b) b.textContent=mode==='dark'?'☀':'☾';
-    if(b) b.title=mode==='dark'?'حالت روز':'حالت شب';
+    if(b){
+      b.textContent = mode === 'dark' ? '☀' : '☾';
+      b.title = mode === 'dark' ? 'حالت روز' : 'حالت شب';
+      b.setAttribute('aria-label', b.title);
+    }
   }
   function init(){
     const main=document.querySelector('.main-nav');
     const more=document.getElementById('moreMenu');
-    if(main&&more){
-      more.querySelectorAll('.nav[data-page]').forEach(function(btn){
-        main.appendChild(btn);
-      });
+    if(main && more){
+      more.querySelectorAll('.nav[data-page]').forEach(function(btn){ main.appendChild(btn); });
       more.remove();
       const moreBtn=document.getElementById('moreBtn');
       if(moreBtn) moreBtn.remove();
     }
-    document.querySelectorAll('.main-nav .nav[data-page]').forEach(function(btn){
-      btn.onclick=function(e){
-        e.preventDefault();
-        if(typeof window.emperatorNavigate==='function') window.emperatorNavigate(btn.getAttribute('data-page'));
-        else if(typeof window.showPage==='function') window.showPage(btn.getAttribute('data-page'));
-      };
-    });
+
     const userbar=document.querySelector('.userbar');
     if(userbar){
       let b=document.getElementById('themeToggle');
       if(!b){
         b=document.createElement('button');
-        b.id='themeToggle'; b.className='iconbtn'; b.type='button';
+        b.id='themeToggle';
+        b.className='iconbtn theme-toggle';
+        b.type='button';
         userbar.insertBefore(b,userbar.firstChild||null);
       }
-      b.onclick=function(){applyTheme((document.documentElement.dataset.theme||'dark')==='dark'?'light':'dark')};
+      b.onclick=function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        const current=document.documentElement.getAttribute('data-theme') || 'dark';
+        applyTheme(current === 'dark' ? 'light' : 'dark');
+      };
     }
-    applyTheme(localStorage.getItem('emperator_theme')||'dark');
-    if(window.EmperatorKDS&&typeof window.EmperatorKDS.init==='function') window.EmperatorKDS.init();
+
+    let saved='dark';
+    try{ saved=localStorage.getItem('emperator_theme') || 'dark'; }catch(e){}
+    applyTheme(saved);
+
+    if(window.EmperatorKDS && typeof window.EmperatorKDS.init==='function') window.EmperatorKDS.init();
   }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true}); else init();
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true});
+  else init();
 })();
