@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 
@@ -39,5 +39,7 @@ def mount_frontend(app):
         except ValueError:
             raise HTTPException(status_code=404, detail="Not Found")
         if candidate.is_file():
-            return HTMLResponse(candidate.read_text(encoding="utf-8"), media_type="text/html") if candidate.suffix.lower() in {".html"} else __import__("fastapi").responses.FileResponse(str(candidate))
+            if candidate.suffix.lower() == ".html":
+                return HTMLResponse(candidate.read_text(encoding="utf-8"), media_type="text/html")
+            return FileResponse(str(candidate))
         raise HTTPException(status_code=404, detail="Not Found")
