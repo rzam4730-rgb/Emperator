@@ -1,36 +1,19 @@
-// Emperator runtime safety layer: keeps navigation and module actions alive even if an older script fails to initialize.
+// Emperator universal UI runtime.
 (function(){
-  const API_BASE='http://127.0.0.1:8000/api';
+  const API='http://127.0.0.1:8000/api';
   const nativeFetch=window.fetch.bind(window);
-  function authToken(){ try{return window.accessToken||null}catch(_){return null} }
-  if(typeof window.api!=='function'){
-    window.api=async function(path,options={},retry){
-      const headers={'Content-Type':'application/json',...(options.headers||{})};
-      const token=authToken(); if(token)headers.Authorization='Bearer '+token;
-      let response=await nativeFetch(API_BASE+path,{...options,headers});
-      if(response.status===401 && retry!==false && typeof window.refreshAccessToken==='function'){
-        try{if(await window.refreshAccessToken()){const h={'Content-Type':'application/json',...(options.headers||{})};const t=authToken();if(t)h.Authorization='Bearer '+t;response=await nativeFetch(API_BASE+path,{...options,headers:h})}}catch(_){}
-      }
-      if(!response.ok){let detail='خطا در درخواست';try{const d=await response.json();detail=d.detail||detail}catch(_){}throw Error(detail)}
-      const text=await response.text();if(!text.trim())return null;try{return JSON.parse(text)}catch(_){return text}
-    };
-  }
-  function show(id){
-    const target=document.getElementById(id); if(!target)return;
-    document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p===target));
-    document.querySelectorAll('.nav[data-page]').forEach(n=>n.classList.toggle('active',n.dataset.page===id));
-    const more=document.getElementById('moreMenu');if(more)more.classList.remove('show');window.scrollTo(0,0);
-    if(id==='inventory'&&window.EmperatorInventory&&typeof window.EmperatorInventory.load==='function')window.EmperatorInventory.load();
-    if(id==='kitchen'&&window.EmperatorKDS&&typeof window.EmperatorKDS.load==='function')window.EmperatorKDS.load();
-  }
-  window.emperatorNavigate=show;if(typeof window.showPage!=='function')window.showPage=show;
+  const getToken=()=>{try{return window.accessToken||null}catch(_){return null}};
+  async function request(path,opt={}){let h={'Content-Type':'application/json',...(opt.headers||{})},t=getToken();if(t)h.Authorization='Bearer '+t;let r=await nativeFetch(API+path,{...opt,headers:h});if(r.status===401&&typeof window.refreshAccessToken==='function'){try{if(await window.refreshAccessToken()){h={'Content-Type':'application/json',...(opt.headers||{})};t=getToken();if(t)h.Authorization='Bearer '+t;r=await nativeFetch(API+path,{...opt,headers:h})}}catch(_){}}let text=await r.text(),d=null;try{d=text?JSON.parse(text):null}catch(_){d=text}if(!r.ok)throw Error((d&&d.detail)||'خطا در درخواست');return d}
+  if(typeof window.api!=='function')window.api=request;
+  function show(id){const el=document.getElementById(id);if(!el)return false;document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));el.classList.add('active');document.querySelectorAll('.nav[data-page]').forEach(n=>n.classList.toggle('active',n.dataset.page===id));const menu=document.getElementById('moreMenu');if(menu)menu.classList.remove('show');if(id==='inventory'&&window.EmperatorInventory?.load)window.EmperatorInventory.load();if(id==='kitchen'&&window.EmperatorKDS?.load)window.EmperatorKDS.load();if(id==='orders')loadOrders();if(id==='customers')loadCustomers();window.scrollTo(0,0);return true}
+  window.showPage=show;window.emperatorNavigate=show;
+  async function loadOrders(){try{const data=await request('/orders');const p=document.getElementById('orders'),t=p&&p.querySelector('.table');if(!t)return;t.innerHTML='<div class="tr th"><span>شماره</span><span>مشتری</span><span>مبلغ</span><span>وضعیت</span><span>عملیات</span></div>'+(data||[]).map(o=>`<div class="tr"><span>#${o.id}</span><span>${o.customer_name||'مشتری'}</span><span>${Number(o.total||0).toLocaleString('fa-IR')} تومان</span><b>${o.status||'جدید'}</b><button type="button">مشاهده</button></div>`).join('')||'<div class="empty-panel">سفارشی ثبت نشده است.</div>'}catch(e){}}
+  async function loadCustomers(){try{const data=await request('/customers');const p=document.getElementById('customers'),l=p&&p.querySelector('.customer-list');if(!l)return;l.innerHTML=(data||[]).map(c=>`<div class="order"><span>👤 ${c.name||''}</span><span>${c.phone||''}</span><strong>${c.order_count||0} سفارش</strong></div>`).join('')||'<div class="empty-panel">مشتری ثبت نشده است.</div>'}catch(e){}}
   function wire(){
-    document.querySelectorAll('.nav[data-page]').forEach(btn=>{if(btn.dataset.runtimeBound)return;btn.dataset.runtimeBound='1';btn.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();show(btn.dataset.page)},true)});
-    document.querySelectorAll('[data-go]').forEach(btn=>{if(btn.dataset.runtimeBound)return;btn.dataset.runtimeBound='1';btn.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();show(btn.dataset.go)},true)});
-    if(!document.querySelector('.page.active')){const first=document.querySelector('.page');if(first)show(first.id)}
-    const inv=document.getElementById('inventory');
-    if(inv&&!inv.querySelector('.inv-actions')){const head=inv.querySelector('.page-head');if(head){const a=document.createElement('div');a.className='inv-actions';a.innerHTML='<button class="primary" data-runtime-inv="add">＋ افزودن ماده اولیه</button><button class="primary" data-runtime-inv="in">📥 ورود کالا</button><button class="textbtn" data-runtime-inv="refresh">↻ بروزرسانی</button>';head.appendChild(a)}}
-    document.querySelectorAll('[data-runtime-inv]').forEach(b=>{if(b.dataset.bound)return;b.dataset.bound='1';b.onclick=()=>{const a=b.dataset.runtimeInv;if(!window.EmperatorInventory)return;if(a==='add'&&window.EmperatorInventory.addItem)window.EmperatorInventory.addItem();else if(a==='refresh')window.EmperatorInventory.load();else if(a==='in'&&window.EmperatorInventory.tab)window.EmperatorInventory.tab('movement','adjustment_in')}});
+    document.addEventListener('click',function(e){const nav=e.target.closest('.nav[data-page]');if(nav){e.preventDefault();e.stopImmediatePropagation();if(nav.id==='moreBtn'){const m=document.getElementById('moreMenu');if(m)m.style.display='grid';return}show(nav.dataset.page);return}const go=e.target.closest('[data-go]');if(go){e.preventDefault();e.stopImmediatePropagation();show(go.dataset.go);return}const inv=e.target.closest('[data-inv-action]');if(inv){e.preventDefault();e.stopImmediatePropagation();const a=inv.dataset.invAction;if(!window.EmperatorInventory)return;if(a==='add')window.EmperatorInventory.addItem?.();else if(a==='entry')window.EmperatorInventory.tab?.('movement','adjustment_in');else if(a==='exit')window.EmperatorInventory.tab?.('movement','adjustment_out');else if(a==='waste')window.EmperatorInventory.tab?.('movement','waste');}},true);
+    const more=document.getElementById('moreBtn');if(more)more.style.display='block';
+    const menu=document.getElementById('moreMenu');if(menu){menu.style.display='none';menu.style.position='fixed';menu.style.top='86px';menu.style.right='20px';menu.style.zIndex='1000';menu.style.background='var(--panel)';menu.style.border='1px solid var(--line)';menu.style.padding='8px';menu.style.borderRadius='12px';menu.style.gridTemplateColumns='1fr';menu.style.gap='4px'}
+    const first=document.querySelector('.page.active')||document.querySelector('.page');if(first&&!document.querySelector('.page.active'))show(first.id);
   }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(wire,80),{once:true});else setTimeout(wire,80);setTimeout(wire,600);setTimeout(wire,1500);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire,{once:true});else wire();
 })();
