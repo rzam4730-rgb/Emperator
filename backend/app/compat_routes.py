@@ -126,3 +126,46 @@ def mount_core_routes(app, conn, current_user, require_permission, hash_password
         except sqlite3.IntegrityError:
             c.rollback(); raise HTTPException(409,"این شماره موبایل قبلاً ثبت شده است")
         finally: c.close()
+
+    @app.patch("/api/users/{user_id}")
+    def update_user(user_id:int,payload:dict,user=Depends(require_permission("users.manage"))):
+        c=conn()
+        try:
+            target=c.execute("SELECT u.id,u.name,u.phone,u.status,r.name role FROM users u JOIN user_restaurants ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id WHERE u.id=? AND ur.restaurant_id=?",(user_id,user["restaurant_id"])).fetchone()
+            if not target: raise HTTPException(404,"کاربر موردنظر پیدا نشد")
+            if target["role"]=="owner" and user["role"]!="owner": raise HTTPException(403,"ویرایش مالک فقط توسط مالک مجاز است")
+            fields=[]; values=[]
+            if "name" in payload:
+                name=str(payload.get("name","")).strip()
+                if len(name)<2: raise HTTPException(400,"نام نامعتبر است")
+                fields.append("name=?"); values.append(name)
+            if "phone" in payload:
+                phone=str(payload.get("phone","")).strip()
+                if len(phone)<7: raise HTTPException(400,"شماره موبایل نامعتبر است")
+                fields.append("phone=?"); values.append(phone)
+            if "status" in payload:
+                status=str(payload.get("status","active")).strip()
+                if status not in ("active","disabled"): raise HTTPException(400,"وضعیت نامعتبر است")
+                if target["role"]=="owner" and status!="active": raise HTTPException(403,"مالک اصلی را نمی‌توان غیرفعال کرد")
+                fields.append("status=?"); values.append(status)
+            if "role" in payload:
+                role_name=str(payload.get("role","cashier")).strip().lower()
+                role=c.execute("SELECT id,name FROM roles WHERE name=?",(role_name,)).fetchone()
+                if not role: raise HTTPException(400,"نقش نامعتبر است")
+                if role_name=="owner" and user["role"]!="owner": raise HTTPException(403,"فقط مالک می‌تواند نقش مالک بدهد")
+                c.execute("UPDATE user_restaurants SET role_id=? WHERE user_id=? AND restaurant_id=?",(role["id"],user_id,user["restaurant_id"]))
+            if fields:
+                values.append(user_id); c.execute("UPDATE users SET "+", ".join(fields)+" WHERE id=?",values)
+            audit(c,user,"user.update","user",user_id,json.dumps(payload,ensure_ascii=False)); c.commit()
+            row=c.execute("SELECT u.id,u.name,u.phone,u.status,r.name role FROM users u JOIN user_restaurants ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id WHERE u.id=? AND ur.restaurant_id=?",(user_id,user["restaurant_id"])).fetchone()
+            return dict(row)
+        except sqlite3.IntegrityError:
+            c.rollback(); raise HTTPException(409,"این شماره موبایل قبلاً ثبت شده است")
+        finally:
+            c.close()
+
+    @app.get("/api/audit-logs")
+    def audit_logs(user=Depends(require_permission("users.manage"))):
+        c=conn()
+        rows=[dict(x) for x in c.execute("SELECT id,action,target_type,target_id,details,created_at FROM audit_logs WHERE restaurant_id=? ORDER BY id DESC LIMIT 50",(user["restaurant_id"],))]
+        c.close(); return rows
