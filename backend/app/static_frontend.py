@@ -8,8 +8,12 @@ from fastapi.staticfiles import StaticFiles
 def _index_response(index_file: Path):
     html = index_file.read_text(encoding="utf-8")
     marker = "</body>"
-    injection = '<script src="/assets/navigation-fix.js"></script>'
-    if injection not in html:
+    injection = (
+        '<script src="/assets/app-core.js"></script>'
+        '<script src="/assets/auth-fix.js"></script>'
+        '<script src="/assets/navigation-fix.js"></script>'
+    )
+    if "/assets/app-core.js" not in html:
         html = html.replace(marker, injection + marker)
     return HTMLResponse(html, media_type="text/html")
 
@@ -39,7 +43,5 @@ def mount_frontend(app):
         except ValueError:
             raise HTTPException(status_code=404, detail="Not Found")
         if candidate.is_file():
-            if candidate.suffix.lower() == ".html":
-                return HTMLResponse(candidate.read_text(encoding="utf-8"), media_type="text/html")
             return FileResponse(str(candidate))
         raise HTTPException(status_code=404, detail="Not Found")
