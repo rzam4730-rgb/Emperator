@@ -1,4 +1,4 @@
-// Emperator auth response hardening.
+// Emperator auth response hardening + navigation wiring.
 (function(){
   const nativeFetch=window.fetch.bind(window);
   window.fetch=function(input,init){
@@ -51,4 +51,26 @@
     }
   };
   window.emperatorAuthFix.install();
+
+  function wireNavigation(){
+    if(typeof showPage!=='function')return;
+    document.querySelectorAll('.nav[data-page]').forEach(btn=>{
+      btn.onclick=function(e){e.preventDefault();e.stopPropagation();showPage(btn.dataset.page)};
+    });
+    document.querySelectorAll('[data-go]').forEach(btn=>{
+      btn.onclick=function(e){e.preventDefault();e.stopPropagation();showPage(btn.dataset.go)};
+    });
+    const checkoutBtn=document.getElementById('checkoutBtn');
+    if(checkoutBtn)checkoutBtn.onclick=function(e){
+      e.preventDefault();
+      checkoutBtn.disabled=true;
+      Promise.resolve(window.checkout?window.checkout():null).finally(function(){checkoutBtn.disabled=false});
+    };
+    const dashOrder=document.querySelector('#dashboard .page-head .primary');
+    if(dashOrder)dashOrder.onclick=function(){showPage('pos')};
+    const ordersOrder=document.querySelector('#orders .page-head .primary');
+    if(ordersOrder)ordersOrder.onclick=function(){showPage('pos')};
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wireNavigation,{once:true});
+  else setTimeout(wireNavigation,0);
 })();
