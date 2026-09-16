@@ -134,6 +134,11 @@ def startup():
         mount_sms_routes(app, conn, current_user)
     except Exception as exc:
         print("SMS module initialization warning:", exc)
+    try:
+        from .kds import mount_kds_routes
+        mount_kds_routes(app, conn, current_user)
+    except Exception as exc:
+        print("KDS module initialization warning:", exc)
 
 
 @app.get("/api/health")
