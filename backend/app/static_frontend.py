@@ -9,12 +9,11 @@ def _index_response(index_file: Path):
     html = index_file.read_text(encoding="utf-8")
     marker = "</body>"
     injection = (
-        '<script src="/assets/app-core.js"></script>'
-        '<script src="/assets/auth-fix.js"></script>'
-        '<script src="/assets/navigation-fix.js"></script>'
+        '<script src="/assets/app-core.js?v=3"></script>'
+        '<script src="/assets/auth-fix.js?v=3"></script>'
+        '<script src="/assets/navigation-fix.js?v=3"></script>'
     )
-    if "/assets/app-core.js" not in html:
-        html = html.replace(marker, injection + marker)
+    html = html.replace(marker, injection + marker)
     return HTMLResponse(html, media_type="text/html")
 
 
