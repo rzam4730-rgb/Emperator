@@ -1,0 +1,40 @@
+/* Emperator final visual layer — RTL enterprise UI */
+:root{--ep-radius:16px;--ep-shadow:0 14px 38px rgba(0,0,0,.16);--ep-shadow-hover:0 20px 48px rgba(0,0,0,.22)}
+body{direction:rtl;letter-spacing:0}
+.content{animation:epIn .28s ease-out}
+.page.active{animation:epIn .24s ease-out}
+@keyframes epIn{from{opacity:.72;transform:translateY(5px)}to{opacity:1;transform:none}}
+.topbar{backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 1px 0 rgba(255,255,255,.03)}
+.brand{cursor:default}.brand b{letter-spacing:-.4px}
+.nav{transition:background .18s,color .18s,transform .18s}.nav:hover{transform:translateY(-1px)}
+.page-head{padding:18px 20px;border:1px solid var(--line);border-radius:var(--ep-radius);background:linear-gradient(135deg,rgba(232,184,79,.08),rgba(54,192,139,.04),transparent);box-shadow:var(--ep-shadow)}
+.page-head h1{font-weight:800;letter-spacing:-.5px}
+.stat-card,.panel,.product,.kanban-col{box-shadow:var(--ep-shadow);transition:transform .2s,box-shadow .2s,border-color .2s}
+.stat-card:hover,.panel:hover,.product:hover{transform:translateY(-2px);box-shadow:var(--ep-shadow-hover)}
+.product{min-height:150px;transition:transform .16s,box-shadow .16s,background .16s}
+.product:active,.primary:active,.quick button:active,.report-grid button:active{transform:scale(.98)}
+.primary{box-shadow:0 8px 22px rgba(232,184,79,.18);transition:transform .16s,box-shadow .16s,filter .16s}.primary:hover{filter:brightness(1.06);box-shadow:0 12px 28px rgba(232,184,79,.26);transform:translateY(-1px)}
+.quick button,.report-grid button,.pay-grid button,.table button{transition:transform .16s,background .16s,border-color .16s,box-shadow .16s}.quick button:hover,.report-grid button:hover,.pay-grid button:hover,.table button:hover{transform:translateY(-1px);border-color:var(--gold);box-shadow:0 8px 20px rgba(0,0,0,.12)}
+.table .tr{transition:background .16s}.table .tr:not(.th):hover{background:rgba(127,150,170,.07)}
+.rank,.order{transition:background .16s}.rank:hover,.order:hover{background:rgba(127,150,170,.06)}
+input,textarea,select{transition:border-color .16s,box-shadow .16s}input:focus,textarea:focus,select:focus{border-color:var(--gold)!important;box-shadow:0 0 0 3px rgba(232,184,79,.12);outline:0}
+.badge,.role-badge{font-weight:700}
+.empty-panel{border:1px dashed var(--line);border-radius:var(--ep-radius);background:rgba(127,150,170,.035)}
+.ai-hero{box-shadow:var(--ep-shadow)}
+footer{opacity:.8}
+/* light mode: warm, fresh and more dimensional */
+:root[data-theme="light"]{--bg:#eef5f1;--bg2:#fff;--panel:#fff;--panel2:#f7fbf9;--line:#d4e2dc;--text:#17231f;--muted:#63736c;--gold:#b97908;--gold2:#925b00;--green:#11865a;--blue:#287fbe;--red:#c84652}
+:root[data-theme="light"] body{background:radial-gradient(circle at 12% 0%,rgba(185,121,8,.10),transparent 28%),radial-gradient(circle at 88% 8%,rgba(17,134,90,.10),transparent 30%),linear-gradient(135deg,#f7fbf9,#e8f0ec)}
+:root[data-theme="light"] .topbar{background:rgba(255,255,255,.88);box-shadow:0 6px 24px rgba(32,72,57,.07)}
+:root[data-theme="light"] .page-head{background:linear-gradient(135deg,#fff8e9,#f4faf7 65%,#fff);box-shadow:0 12px 34px rgba(45,75,62,.10)}
+:root[data-theme="light"] .stat-card,:root[data-theme="light"] .panel{box-shadow:0 12px 30px rgba(45,75,62,.08)}
+:root[data-theme="light"] .stat-card:hover,:root[data-theme="light"] .panel:hover,:root[data-theme="light"] .product:hover{box-shadow:0 18px 42px rgba(45,75,62,.13)}
+:root[data-theme="light"] .stat-icon{background:linear-gradient(145deg,#edf8f2,#fff4dc);border:1px solid #dce9e2}
+:root[data-theme="light"] .product{background:linear-gradient(145deg,#fff,#f5faf7);border-color:#d5e2dc}
+:root[data-theme="light"] .quick button,:root[data-theme="light"] .report-grid button,:root[data-theme="light"] .pay-grid button{background:linear-gradient(145deg,#fff,#f3f8f5);border-color:#d5e2dc}
+:root[data-theme="light"] .kanban-col{background:rgba(244,249,247,.9);box-shadow:0 10px 28px rgba(45,75,62,.07)}
+:root[data-theme="light"] .kanban-col article{background:#fff;box-shadow:0 8px 20px rgba(45,75,62,.06)}
+:root[data-theme="light"] .bars i{background:linear-gradient(to top,#b97908,#e7bd66)}
+:root[data-theme="light"] .ai-hero{background:radial-gradient(circle at top,#e9f6f0,#fff 62%);border-color:#cfe0d8}
+:root[data-theme="light"] .settings button{box-shadow:0 8px 22px rgba(45,75,62,.06)}
+@media(max-width:800px){.page-head{padding:16px}.stat-card,.panel,.product{box-shadow:0 8px 24px rgba(0,0,0,.10)}}
