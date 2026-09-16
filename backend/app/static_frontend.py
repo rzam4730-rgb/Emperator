@@ -13,6 +13,7 @@ def _index_response(index_file: Path):
         '<script src="/assets/auth-fix.js?v=5"></script>'
         '<script src="/assets/navigation-fix.js?v=5"></script>'
         '<script src="/assets/kds.js?v=3"></script>'
+        '<script src="/assets/inventory-ui.js?v=1"></script>'
         '<script src="/assets/theme.js?v=4"></script>'
     )
     html = html.replace(marker, injection + marker)
