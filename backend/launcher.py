@@ -40,6 +40,21 @@ def activate():
     finally:
         c.close()
     mount_core_routes(app, conn, current_user, require_permission, hash_password, verify_password, create_access_token, issue_refresh_token, hash_refresh_token, ensure_subscription, plan_limits, get_usage, utcnow, lambda c, user, action, target_type=None, target_id=None, details=None: c.execute("INSERT INTO audit_logs(user_id,restaurant_id,action,target_type,target_id,details,created_at) VALUES(?,?,?,?,?,?,?)", (user["id"], user["restaurant_id"], action, target_type, target_id, details, utcnow().isoformat())))
+
+    # Core restaurant modules: inventory schema must exist before KDS status changes
+    # can safely perform recipe/stock lookups.
+    try:
+        from app.inventory import install_inventory_schema, mount_inventory_routes
+        c = conn()
+        try:
+            install_inventory_schema(c)
+            c.commit()
+        finally:
+            c.close()
+        mount_inventory_routes(app, conn, current_user)
+    except Exception as exc:
+        print("Inventory module initialization warning:", exc)
+
     try:
         from app.kds import mount_kds_routes
         mount_kds_routes(app, conn, current_user)
