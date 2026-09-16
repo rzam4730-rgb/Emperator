@@ -16,6 +16,7 @@ def _index_response(index_file: Path):
         '<script src="/assets/inventory-ui.js?v=2"></script>'
         '<script src="/assets/theme.js?v=4"></script>'
         '<script src="/assets/runtime-fix.js?v=1"></script>'
+        '<script src="/assets/ui-polish.js?v=1"></script>'
     )
     html = html.replace(marker, injection + marker)
     return HTMLResponse(html, media_type="text/html")
@@ -44,7 +45,7 @@ def mount_frontend(app):
         try:
             candidate.relative_to(frontend_dir.resolve())
         except ValueError:
-            raise HTTPException(status_code=404, detail="Not Found")
+            raise HTTPException(status_code=404, detail="صفحه یا فایل موردنظر پیدا نشد.")
         if candidate.is_file():
             return FileResponse(str(candidate))
-        raise HTTPException(status_code=404, detail="Not Found")
+        raise HTTPException(status_code=404, detail="صفحه یا فایل موردنظر پیدا نشد.")
