@@ -114,6 +114,13 @@ def require_permission(permission: str):
     return checker
 
 
+def require_active_subscription(c, restaurant_id):
+    s = ensure_subscription(c, restaurant_id)
+    if s["status"] != "active" or datetime.fromisoformat(s["expires_at"]) <= utcnow():
+        raise HTTPException(402, "اشتراک شما منقضی شده است. لطفاً تمدید کنید.")
+    return s
+
+
 def audit(c, user, action, target_type=None, target_id=None, details=None):
     c.execute("INSERT INTO audit_logs(user_id,restaurant_id,action,target_type,target_id,details,created_at) VALUES(?,?,?,?,?,?,?)", (user["id"], user["restaurant_id"], action, target_type, target_id, details, datetime.now(timezone.utc).isoformat()))
 
@@ -179,8 +186,9 @@ def add_customer(x:dict,user=Depends(require_permission("customers.write"))):
         cur=c.execute("INSERT INTO customers(name,phone,address,restaurant_id) VALUES(?,?,?,?)",(x["name"],x["phone"],x.get("address",""),user["restaurant_id"])); c.commit()
     except sqlite3.IntegrityError: c.close(); raise HTTPException(400,"این شماره قبلاً ثبت شده است")
     finally:
-        if c: c.close()
-    return dict(cur and {"id":cur.lastrowid,"name":x["name"],"phone":x["phone"],"address":x.get("address","")})
+        try: c.close()
+        except Exception: pass
+    return {"id":cur.lastrowid,"name":x["name"],"phone":x["phone"],"address":x.get("address","")}
 
 @app.get("/api/orders")
 def orders(user=Depends(require_permission("orders.read"))):
