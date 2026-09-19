@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 
 from .subscription import SCHEMA as SUBSCRIPTION_SCHEMA, seed_plans, ensure_subscription, plan_limits, get_usage, increment_usage, utcnow
+from .compat_routes import seed_core, mount_core_routes
 
 BASE = Path(__file__).resolve().parents[2]
 DB = BASE / "emperator.db"
@@ -82,7 +83,9 @@ def init_db():
     add_column_if_missing(c, "orders", "restaurant_id", "INTEGER")
     c.executescript(SUBSCRIPTION_SCHEMA)
     seed_plans(c)
-    c.commit(); c.close()
+    seed_core(c)
+    c.commit()
+    c.close()
 
 
 app = FastAPI(title="Emperator API")
@@ -128,6 +131,7 @@ def audit(c, user, action, target_type=None, target_id=None, details=None):
 @app.on_event("startup")
 def startup():
     init_db()
+    mount_core_routes(app, conn, current_user, require_permission, hash_password, verify_password, create_access_token, issue_refresh_token, hash_refresh_token, ensure_subscription, plan_limits, get_usage, utcnow, audit)
     try:
         from .sms_routes import SMS_SCHEMA, mount_sms_routes
         c = conn(); c.executescript(SMS_SCHEMA); c.commit(); c.close()
