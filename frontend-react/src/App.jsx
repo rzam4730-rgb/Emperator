@@ -1,5 +1,4 @@
-import React from 'react';
-
-export default function App(){
- return <div className="app"><h1>امپراتور</h1><p>نسخه React در حال توسعه است.</p></div>
-}
+import React,{useState} from 'react';import {AuthProvider,useAuth} from './auth/AuthProvider.jsx';import Login from './pages/Login.jsx';import Register from './pages/Register.jsx';
+function Dashboard(){const{user,signOut}=useAuth();const name=user?.first_name?(user.first_name+' '+(user.last_name||'')):(user?.phone||'کاربر');return <div className="app-shell" dir="rtl"><header className="topbar"><div className="brand"><span>♛</span><div><b>امپراتور</b><small>مدیریت هوشمند کسب‌وکار غذایی</small></div></div><div className="userbar"><span>{name}</span><button onClick={signOut}>خروج</button></div></header><main className="content"><div className="page-head"><div><h1>داشبورد مدیریت</h1><p>به پنل مدیریت امپراتور خوش آمدید.</p></div><button className="primary">＋ ثبت سفارش جدید</button></div><div className="stats"><div className="stat-card"><small>فروش امروز</small><b>—</b></div><div className="stat-card"><small>سفارش‌های امروز</small><b>—</b></div><div className="stat-card"><small>مشتریان فعال</small><b>—</b></div><div className="stat-card"><small>هشدار موجودی</small><b>—</b></div></div></main></div>}
+function Root(){const[registerMode,setRegisterMode]=useState(false);const{isAuthenticated}=useAuth();if(isAuthenticated)return <Dashboard/>;return registerMode?<><Register/><button className="auth-switch" onClick={()=>setRegisterMode(false)}>ورود به حساب</button></>:<><Login/><button className="auth-switch" onClick={()=>setRegisterMode(true)}>حساب ندارید؟ ثبت‌نام کنید</button></>}
+export default function App(){return <AuthProvider><Root/></AuthProvider>}
