@@ -29,9 +29,12 @@ jobs:
       - name: Ensure Python 3.8 annotation compatibility
         shell: pwsh
         run: |
-          $files = Get-ChildItem backend\app\*.py
+          $files = Get-ChildItem backend\app\*.py -File
           foreach ($f in $files) {
             $s = Get-Content $f.FullName -Raw -Encoding UTF8
+            if ([string]::IsNullOrEmpty($s)) {
+              continue
+            }
             if (-not $s.StartsWith('from __future__ import annotations')) {
               if ($s.StartsWith('"""')) {
                 $end = $s.IndexOf('"""', 3)
