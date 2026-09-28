@@ -15,7 +15,7 @@ from .subscription import SCHEMA as SUBSCRIPTION_SCHEMA, seed_plans, ensure_subs
 
 BASE = Path(__file__).resolve().parents[2]
 DB = BASE / "emperator.db"
-JWT_SECRET = os.getenv("EMPERATOR_JWT_SECRET", "dev-only-change-this-secret")
+JWT_SECRET = os.getenv("EMPERATOR_JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
 ACCESS_MINUTES = int(os.getenv("EMPERATOR_ACCESS_MINUTES", "15"))
 REFRESH_DAYS = int(os.getenv("EMPERATOR_REFRESH_DAYS", "30"))
@@ -127,6 +127,8 @@ def audit(c, user, action, target_type=None, target_id=None, details=None):
 
 @app.on_event("startup")
 def startup():
+    if not JWT_SECRET or JWT_SECRET == "dev-only-change-this-secret":
+        raise RuntimeError("EMPERATOR_JWT_SECRET must be configured before starting Emperator.")
     init_db()
     try:
         from .sms_routes import SMS_SCHEMA, mount_sms_routes
@@ -223,4 +225,4 @@ def create_order(payload:dict,user=Depends(require_permission("orders.write"))):
 
 @app.get("/api/dashboard")
 def dashboard(user=Depends(require_permission("dashboard.read"))):
-    c=conn(); rid=user["restaurant_id"]; sales=c.execute("SELECT COALESCE(SUM(total),0) FROM orders WHERE restaurant_id=?",(rid,)).fetchone()[0]; order_count=c.execute("SELECT COUNT(*) FROM orders WHERE restaurant_id=?",(rid,)).fetchone()[0]; customers_count=c.execute("SELECT COUNT(*) FROM customers WHERE restaurant_id=?",(rid,)).fetchone()[0]; c.close(); return {"orders":order_count,"sales":sales,"customers":customers_count}
+    c=conn(); rid=user["restaurant_id"]; today=datetime.now(timezone.utc).date().isoformat(); sales=c.execute("SELECT COALESCE(SUM(total),0) FROM orders WHERE restaurant_id=? AND date(created_at)=?",(rid,today)).fetchone()[0]; order_count=c.execute("SELECT COUNT(*) FROM orders WHERE restaurant_id=? AND date(created_at)=?",(rid,today)).fetchone()[0]; customers_count=c.execute("SELECT COUNT(*) FROM customers WHERE restaurant_id=?",(rid,)).fetchone()[0]; low_stock=c.execute("SELECT COUNT(*) FROM inventory_items WHERE restaurant_id=? AND active=1 AND current_stock<=min_stock",(rid,)).fetchone()[0]; c.close(); return {"orders":order_count,"sales":sales,"customers":customers_count,"low_stock":low_stock}
