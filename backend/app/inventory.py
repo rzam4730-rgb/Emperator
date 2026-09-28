@@ -128,7 +128,18 @@ def mount_inventory_routes(app, conn_factory, current_user):
         if product_id<=0 or not rows: raise HTTPException(400,"محصول و مواد دستور پخت الزامی است")
         c=conn_factory()
         try:
-            rid=user["restaurant_id"]; old=c.execute("SELECT id FROM recipes WHERE restaurant_id=? AND product_id=?",(rid,product_id)).fetchone()
+            rid=user["restaurant_id"]
+            product=c.execute("SELECT id FROM products WHERE id=? AND restaurant_id=? AND active=1",(product_id,rid)).fetchone()
+            if not product: raise HTTPException(404,"محصول متعلق به این مجموعه پیدا نشد")
+            item_ids=[]
+            for x in rows:
+                try: item_ids.append(int(x["item_id"]))
+                except (KeyError,TypeError,ValueError): raise HTTPException(400,"ماده اولیه نامعتبر است")
+            if len(set(item_ids)) != len(item_ids): raise HTTPException(400,"ماده اولیه تکراری در دستور پخت مجاز نیست")
+            placeholders=",".join("?" for _ in item_ids)
+            valid_count=c.execute(f"SELECT COUNT(*) FROM inventory_items WHERE restaurant_id=? AND active=1 AND id IN ({placeholders})",(rid,*item_ids)).fetchone()[0]
+            if valid_count != len(item_ids): raise HTTPException(404,"یکی از مواد اولیه متعلق به این مجموعه نیست")
+            old=c.execute("SELECT id FROM recipes WHERE restaurant_id=? AND product_id=?",(rid,product_id)).fetchone()
             if old:
                 recipe_id=old[0]; c.execute("DELETE FROM recipe_items WHERE recipe_id=?",(recipe_id,)); c.execute("UPDATE recipes SET name=?,yield_quantity=?,active=1 WHERE id=?",(str(payload.get("name","دستور پخت")).strip(),float(payload.get("yield_quantity",1)),recipe_id))
             else:

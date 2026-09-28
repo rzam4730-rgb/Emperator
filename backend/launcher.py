@@ -1,9 +1,14 @@
 import os
+import secrets
 from pathlib import Path
 
 
 def load_local_env():
-    candidates = [Path(__file__).resolve().parent / ".env", Path(__file__).resolve().parents[1] / ".env"]
+    candidates = [
+        Path(__file__).resolve().parent / ".env",
+        Path(__file__).resolve().parents[1] / ".env",
+        Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Emperator" / ".env",
+    ]
     for path in candidates:
         if not path.is_file():
             continue
@@ -18,9 +23,33 @@ def load_local_env():
                     os.environ[key] = value
         except OSError as exc:
             print("Local .env load warning:", exc)
-        break
+        if os.getenv("EMPERATOR_JWT_SECRET"):
+            return
+
+
+def ensure_runtime_secret():
+    if os.getenv("EMPERATOR_JWT_SECRET"):
+        return
+    config_dir = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Emperator"
+    config_file = config_dir / ".env"
+    try:
+        config_dir.mkdir(parents=True, exist_ok=True)
+        secret = secrets.token_urlsafe(48)
+        config_file.write_text(
+            "# Emperator local runtime configuration\n"
+            f"EMPERATOR_JWT_SECRET={secret}\n",
+            encoding="utf-8",
+        )
+        os.environ["EMPERATOR_JWT_SECRET"] = secret
+    except OSError as exc:
+        raise RuntimeError(
+            "Could not create Emperator local configuration. "
+            "Set EMPERATOR_JWT_SECRET manually and restart."
+        ) from exc
+
 
 load_local_env()
+ensure_runtime_secret()
 
 import uvicorn
 from app.main import app, conn, init_db, current_user, require_permission, hash_password, verify_password, create_access_token, issue_refresh_token, hash_refresh_token
@@ -71,6 +100,6 @@ def activate():
     mount_frontend(app)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     activate()
-    uvicorn.run(app, host='127.0.0.1', port=8000, log_level='warning')
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")

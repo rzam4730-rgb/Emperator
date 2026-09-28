@@ -1,5 +1,6 @@
 const { app, BrowserWindow } = require('electron');
 const { spawn } = require('child_process');
+const http = require('http');
 const path = require('path');
 
 let backend = null;
@@ -23,6 +24,29 @@ function startPrinterBridge() {
   printerBridge = startProcess(exe, 'Printer bridge');
 }
 
+function checkBackendHealth() {
+  return new Promise((resolve) => {
+    const request = http.get('http://127.0.0.1:8000/api/health', (response) => {
+      response.resume();
+      resolve(response.statusCode === 200);
+    });
+    request.setTimeout(1500, () => {
+      request.destroy();
+      resolve(false);
+    });
+    request.on('error', () => resolve(false));
+  });
+}
+
+async function waitForBackend(timeoutMs = 30000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (await checkBackendHealth()) return true;
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  return false;
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
@@ -44,10 +68,16 @@ function createWindow() {
   win.loadFile(index);
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   startBackend();
   startPrinterBridge();
-  setTimeout(createWindow, 1800);
+  const ready = await waitForBackend();
+  if (!ready) {
+    console.error('Backend did not become ready within 30 seconds.');
+    app.quit();
+    return;
+  }
+  createWindow();
 });
 
 app.on('before-quit', () => {

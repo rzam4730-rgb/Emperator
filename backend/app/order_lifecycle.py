@@ -1,6 +1,7 @@
 """Unified order lifecycle for Emperator."""
 from datetime import datetime, timezone
 from fastapi import Depends, HTTPException
+from .order_status import is_allowed
 
 
 def _now(): return datetime.now(timezone.utc).isoformat()
@@ -40,6 +41,8 @@ def mount_order_lifecycle_routes(app, conn_factory, current_user):
             if not o: raise HTTPException(404,'سفارش یافت نشد')
             if o['status']=='تحویل‌شده': return {'status':'already_finalized','order_id':order_id}
             old=o['status']
+            if not is_allowed(old, 'تحویل‌شده'):
+                raise HTTPException(409, f'تغییر وضعیت از {old} به تحویل‌شده مجاز نیست')
             from .order_inventory import consume_order_inventory
             cost, inventory_status=consume_order_inventory(c,order_id,user)
             c.execute('UPDATE orders SET status=? WHERE id=? AND restaurant_id=?',('تحویل‌شده',order_id,rid))
