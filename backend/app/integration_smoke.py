@@ -25,7 +25,7 @@ def run():
         CREATE TABLE recipes(id INTEGER PRIMARY KEY, restaurant_id INTEGER, product_id INTEGER, yield_quantity REAL DEFAULT 1, active INTEGER DEFAULT 1);
         CREATE TABLE recipe_items(id INTEGER PRIMARY KEY, recipe_id INTEGER, item_id INTEGER, quantity REAL);
         CREATE TABLE inventory_items(id INTEGER PRIMARY KEY, restaurant_id INTEGER, name TEXT, unit TEXT, current_stock REAL DEFAULT 0, cost_per_unit INTEGER DEFAULT 0, min_stock REAL DEFAULT 0);
-        CREATE TABLE inventory_movements(id INTEGER PRIMARY KEY, restaurant_id INTEGER, item_id INTEGER, quantity REAL, movement_type TEXT, reference_id TEXT, created_at TEXT);
+        CREATE TABLE inventory_movements(id INTEGER PRIMARY KEY, restaurant_id INTEGER, item_id INTEGER, quantity REAL, movement_type TEXT, unit_cost INTEGER NOT NULL DEFAULT 0, reference_type TEXT, reference_id INTEGER, note TEXT, created_by INTEGER NOT NULL DEFAULT 0, created_at TEXT);
         ''')
         install_accounting_schema(c); install_customer_club_schema(c); install_order_inventory_schema(c); install_lifecycle_schema(c)
         c.execute("INSERT INTO restaurants VALUES(1,'Test', 'active')")
