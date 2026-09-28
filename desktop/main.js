@@ -1,5 +1,6 @@
 const { app, BrowserWindow } = require('electron');
 const { spawn } = require('child_process');
+const http = require('http');
 const path = require('path');
 
 let backend = null;
@@ -23,13 +24,24 @@ function startPrinterBridge() {
   printerBridge = startProcess(exe, 'Printer bridge');
 }
 
+function checkBackendHealth() {
+  return new Promise((resolve) => {
+    const request = http.get('http://127.0.0.1:8000/api/health', (response) => {
+      response.resume();
+      resolve(response.statusCode === 200);
+    });
+    request.setTimeout(1500, () => {
+      request.destroy();
+      resolve(false);
+    });
+    request.on('error', () => resolve(false));
+  });
+}
+
 async function waitForBackend(timeoutMs = 30000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    try {
-      const response = await fetch('http://127.0.0.1:8000/api/health');
-      if (response.ok) return true;
-    } catch (_) {}
+    if (await checkBackendHealth()) return true;
     await new Promise(resolve => setTimeout(resolve, 500));
   }
   return false;
