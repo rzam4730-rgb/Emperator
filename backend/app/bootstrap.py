@@ -2,41 +2,34 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 
 
 def ensure_initial_owner(c, hash_password):
-    """Ensure the local bootstrap owner can log in and has demo products."""
-    phone = "09120000000"
-    password_hash = hash_password("12345678")
+    """Optionally create a first-run owner from explicit environment variables.
 
-    existing = c.execute(
-        "SELECT id FROM users WHERE phone=? LIMIT 1", (phone,)
-    ).fetchone()
-    if existing:
-        c.execute(
-            "UPDATE users SET password_hash=?, status='active' WHERE id=?",
-            (password_hash, existing["id"]),
-        )
-        restaurant = c.execute(
-            "SELECT restaurant_id FROM user_restaurants WHERE user_id=? LIMIT 1",
-            (existing["id"],),
-        ).fetchone()
-        if restaurant:
-            _ensure_demo_products(c, restaurant["restaurant_id"])
+    No default credentials are created or reset automatically.
+    """
+    existing_count = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    if existing_count != 0:
         return False
 
-    if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] != 0:
+    phone = os.getenv("EMPERATOR_BOOTSTRAP_PHONE", "").strip()
+    password = os.getenv("EMPERATOR_BOOTSTRAP_PASSWORD", "")
+    name = os.getenv("EMPERATOR_BOOTSTRAP_NAME", "مدیر امپراتور").strip()
+    restaurant_name = os.getenv("EMPERATOR_BOOTSTRAP_RESTAURANT", "مجموعه امپراتور").strip()
+    if len(phone) < 7 or len(password) < 8 or len(name) < 2 or len(restaurant_name) < 2:
         return False
 
     now = datetime.now(timezone.utc).isoformat()
     restaurant_id = c.execute(
         "INSERT INTO restaurants(name,status,created_at) VALUES(?,?,?)",
-        ("مجموعه اولیه امپراتور", "active", now),
+        (restaurant_name, "active", now),
     ).lastrowid
     owner_id = c.execute("SELECT id FROM roles WHERE name='owner'").fetchone()[0]
     user_id = c.execute(
         "INSERT INTO users(name,phone,password_hash,created_at) VALUES(?,?,?,?)",
-        ("مدیر امپراتور", phone, password_hash, now),
+        (name, phone, hash_password(password), now),
     ).lastrowid
     c.execute(
         "INSERT INTO user_restaurants(user_id,restaurant_id,role_id) VALUES(?,?,?)",
