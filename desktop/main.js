@@ -23,6 +23,18 @@ function startPrinterBridge() {
   printerBridge = startProcess(exe, 'Printer bridge');
 }
 
+async function waitForBackend(timeoutMs = 30000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/health');
+      if (response.ok) return true;
+    } catch (_) {}
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  return false;
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
@@ -44,10 +56,16 @@ function createWindow() {
   win.loadFile(index);
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   startBackend();
   startPrinterBridge();
-  setTimeout(createWindow, 1800);
+  const ready = await waitForBackend();
+  if (!ready) {
+    console.error('Backend did not become ready within 30 seconds.');
+    app.quit();
+    return;
+  }
+  createWindow();
 });
 
 app.on('before-quit', () => {
